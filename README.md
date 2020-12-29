@@ -1,0 +1,12 @@
+astra-toolbox requires cuda 10.2: conda install -c astra-toolbox/label/dev astra-toolbox
+
+conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
+
+Build Python package:
+`python setup.py bdist_wheel`
+
+Build singularity recipe:
+`neurodocker generate singularity -b nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 -p apt --copy /home/tibuch/Gitrepos/FourierImageTransformer/dist/fourier_image_transformers-0.1.0-py3-none-any.whl /fourier_image_transformers-0.1.0-py3-none-any.whl --miniconda create_env=fit conda_install='python=3.7 astra-toolbox -c astra-toolbox/label/dev pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch' pip_install='/fourier_image_transformers-0.1.0-py3-none-any.whl' activate=true --entrypoint "/neurodocker/startup.sh python" > v0.1.0.Singularity`
+
+Build singularity container:
+`sudo singularity build fit.simg fit.Singularity`
