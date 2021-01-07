@@ -90,7 +90,7 @@ class TRecTransformerModule(LightningModule):
                                       dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
             y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
                                2 * (self.hparams.img_shape // 2,), (1, 2))
-            return F.mse_loss(self.mask * y_hat, self.mask * target_real)
+            return F.mse_loss(y_hat, target_real)
         else:
             dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
                                       dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
@@ -206,7 +206,7 @@ class TRecTransformerModule(LightningModule):
         bin_mse = [o['bin_mse'] for o in outputs]
         mean_val_mse = torch.mean(torch.stack(val_mse))
         mean_bin_mse = torch.mean(torch.stack(bin_mse))
-        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (self.hparams.alpha * mean_bin_mse):
+        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (self.hparams.alpha * mean_bin_mse) and self.bin_factor > 1:
             self.bin_count = 0
             self.bin_factor = max(1, self.bin_factor - 1)
             self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
