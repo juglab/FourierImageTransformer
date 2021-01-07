@@ -102,7 +102,7 @@ class TRecTransformerModule(LightningModule):
                                2 * (self.hparams.img_shape // 2,), (1, 2))
             y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
                                   2 * (self.hparams.img_shape // 2,), (1, 2))
-            return F.mse_loss(self.circle * y_hat, self.circle * y_target)
+            return F.mse_loss(y_hat, y_target)
 
     def _fc_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
         return F.mse_loss(pred_fc, target_fc)
@@ -189,9 +189,6 @@ class TRecTransformerModule(LightningModule):
                 y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
 
-            x_img *= self.circle
-            pred_img *= self.circle
-            y_img *= self.circle
             x_img = torch.clamp((x_img - x_img.min()) / (x_img.max() - x_img.min()), 0, 1)
             pred_img = torch.clamp((pred_img - pred_img.min()) / (pred_img.max() - pred_img.min()), 0, 1)
             y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
