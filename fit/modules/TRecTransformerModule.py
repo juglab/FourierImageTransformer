@@ -2,8 +2,9 @@ import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.core.step_result import TrainResult, EvalResult
 
+from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
 from fit.transformers.TRecTransformer import TRecTransformer
-from fit.utils import convert2FC, fft_interpolate
+from fit.utils import convert2FC, fft_interpolate, PSNR, convert_to_dft, psfft
 from fit.utils.RAdam import RAdam
 
 import numpy as np
@@ -13,7 +14,9 @@ import torch.fft
 
 
 class TRecTransformerModule(LightningModule):
-    def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, angles, img_shape=362,
+    def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, src_flatten_coords,
+                 dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27, init_bin_factor=4,
+                 alpha=1.5, bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
                  loss_switch=0.5,
@@ -22,6 +25,10 @@ class TRecTransformerModule(LightningModule):
 
         self.save_hyperparameters("d_model",
                                   "img_shape",
+                                  "alpha",
+                                  "bin_factor_cd",
+                                  "init_bin_factor",
+                                  "detector_len",
                                   "lr",
                                   "weight_decay",
                                   "loss_switch",
@@ -35,8 +42,21 @@ class TRecTransformerModule(LightningModule):
         self.x_coords_proj = x_coords_proj
         self.y_coords_img = y_coords_img
         self.x_coords_img = x_coords_img
+        if not type(src_flatten_coords) is torch.Tensor:
+            self.src_flatten_coords = torch.from_numpy(src_flatten_coords)
+        else:
+            self.src_flatten_coords = src_flatten_coords
+        if not type(dst_flatten_coords) is torch.Tensor:
+            self.dst_flatten_coords = torch.from_numpy(dst_flatten_coords)
+        else:
+            self.dst_flatten_coords = dst_flatten_coords
+        self.dst_order = dst_order
         self.angles = angles
+        self.num_angles = len(self.angles)
         self.dft_shape = (img_shape, img_shape // 2 + 1)
+        self.bin_factor = init_bin_factor
+        self.bin_count = 0
+        self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
 
         self.trec = TRecTransformer(d_model=self.hparams.d_model,
                                     y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
@@ -51,33 +71,60 @@ class TRecTransformerModule(LightningModule):
         self.criterion = self._fc_loss
         self.using_real_loss = False
 
-    def forward(self, x):
-        return self.trec.forward(x)
+        x, y = torch.meshgrid(torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
+                                           MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1),
+                              torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
+                                           MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1))
+        self.register_buffer('circle', torch.sqrt(x ** 2. + y ** 2.) <= MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2)
+
+    def forward(self, x, out_pos_emb):
+        return self.trec.forward(x, out_pos_emb)
 
     def configure_optimizers(self):
         optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def _real_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
-        mag = pred_fc[..., 0]
-        phi = pred_fc[..., 1]
-        mag = (mag * (mag_max - mag_min)) + mag_min
-        mag = torch.exp(mag)
-
-        phi = phi * 2 * np.pi
-        dft = torch.complex(mag * torch.cos(phi), mag * torch.sin(phi))
-        dft = dft.reshape(-1, *self.dft_shape)
-        y_hat = torch.roll(torch.fft.irfftn(dft, dim=[1, 2]),
-                           (self.hparams.img_shape // 2, self.hparams.img_shape // 2), (1, 2))
-        return F.mse_loss(y_hat, target_real)
+        if self.bin_factor == 1:
+            dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
+                                      dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+            y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                               2 * (self.hparams.img_shape // 2,), (1, 2))
+            return F.mse_loss(y_hat, target_real)
+        else:
+            dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
+                                      dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+            dft_target = convert_to_dft(fc=target_fc, mag_min=mag_min, mag_max=mag_max,
+                                        dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+            dft_pred *= self.mask
+            dft_target *= self.mask
+            y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                               2 * (self.hparams.img_shape // 2,), (1, 2))
+            y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                                  2 * (self.hparams.img_shape // 2,), (1, 2))
+            return F.mse_loss(y_hat, y_target)
 
     def _fc_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
         return F.mse_loss(pred_fc, target_fc)
 
+    def _bin_data(self, x_fc, y_fc):
+        shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
+        num_sino_fcs = np.clip(self.num_angles * int(shells + 1), 1, x_fc.shape[1])
+        num_target_fcs = np.sum(self.dst_order <= shells)
+
+        x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
+        out_pos_emb = self.trec.pos_embedding_target.pe[:, :num_target_fcs]
+        y_fc_ = y_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
+
+        return x_fc_, out_pos_emb, y_fc_
+
     def training_step(self, batch, batch_idx):
         x_fc, y_fc, y_real, (mag_min, mag_max) = batch
-        pred = self(x_fc)
-        loss = self.criterion(pred, y_fc, y_real, mag_min, mag_max)
+        x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
+
+        pred = self.trec.forward(x_fc_, out_pos_emb)
+
+        loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
         return loss
 
     def on_train_epoch_start(self):
@@ -90,34 +137,60 @@ class TRecTransformerModule(LightningModule):
         loss = [d['loss'] for d in outputs]
         self.log('Train/loss', torch.mean(torch.stack(loss)), logger=True, on_epoch=True)
 
+    def _monitor_mse(self, pred, y_real, mag_min, mag_max):
+        dft_pred = convert_to_dft(fc=pred, mag_min=mag_min, mag_max=mag_max,
+                                  dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                           2 * (self.hparams.img_shape // 2,), (1, 2))
+        return F.mse_loss(y_hat, y_real)
+
     def validation_step(self, batch, batch_idx):
         x_fc, y_fc, y_real, (mag_min, mag_max) = batch
-        pred = self(x_fc)
-        val_loss = self.criterion(pred, y_fc, y_real, mag_min, mag_max)
-        val_mse = self._real_loss(pred, y_fc, y_real, mag_min, mag_max)
+        x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
+        pred = self.trec.forward(x_fc_, out_pos_emb)
+
+        val_loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
+
+        val_mse = self._monitor_mse(pred, y_real, mag_min=mag_min, mag_max=mag_max)
+        bin_mse = self._monitor_mse(y_fc_, y_real, mag_min=mag_min, mag_max=mag_max)
         self.log_dict({'val_loss': val_loss})
         self.log_dict({'val_mse': val_mse})
+        self.log_dict({'bin_mse': bin_mse})
         if batch_idx == 0:
-            self.log_val_images(pred, x_fc, y_real, mag_min, mag_max)
-        return {'val_loss': val_loss, 'val_mse': val_mse}
+            self.log_val_images(pred, x_fc, y_fc_, y_real, mag_min, mag_max)
+        return {'val_loss': val_loss, 'val_mse': val_mse, 'bin_mse': bin_mse}
 
-    def log_val_images(self, pred, x, y_real, mag_min, mag_max):
+    def log_val_images(self, pred, x, y_fc, y_real, mag_min, mag_max):
         x_fc = convert2FC(x, mag_min, mag_max)
-        pred_fc = convert2FC(pred, mag_min, mag_max)
+        dft_pred = convert_to_dft(fc=pred, mag_min=mag_min, mag_max=mag_max,
+                                  dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_target = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
+                                    dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
 
         for i in range(3):
             x_dft = fft_interpolate(self.x_coords_proj.cpu().numpy(), self.y_coords_proj.cpu().numpy(),
                                     self.x_coords_img.cpu().numpy(), self.y_coords_img.cpu().numpy(),
-                                    x_fc[i].cpu().numpy(), target_shape=self.dft_shape)
-            x_img = torch.roll(torch.fft.irfftn(torch.from_numpy(x_dft)),
-                                  2 * (self.hparams.img_shape // 2,), (0, 1))
+                                    x_fc[i][self.src_flatten_coords].cpu().numpy(),
+                                    dst_flatten_order=self.dst_flatten_coords,
+                                    target_shape=self.dft_shape)
+
+            if self.bin_factor == 1:
+                x_img = torch.roll(torch.fft.irfftn(torch.from_numpy(x_dft), s=2 * (self.hparams.img_shape,)),
+                                   2 * (self.hparams.img_shape // 2,), (0, 1))
+                pred_img = torch.roll(torch.fft.irfftn(dft_pred[i]),
+                                      2 * (self.hparams.img_shape // 2,), (0, 1))
+                y_img = y_real[i]
+            else:
+                x_img = torch.roll(torch.fft.irfftn(self.mask * torch.from_numpy(x_dft).to(pred.device),
+                                                    s=2 * (self.hparams.img_shape,)),
+                                   2 * (self.hparams.img_shape // 2,), (0, 1))
+                pred_img = torch.roll(torch.fft.irfftn(self.mask * dft_pred[i], s=2 * (self.hparams.img_shape,)),
+                                      2 * (self.hparams.img_shape // 2,), (0, 1))
+                y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
+                                   2 * (self.hparams.img_shape // 2,), (0, 1))
+
             x_img = torch.clamp((x_img - x_img.min()) / (x_img.max() - x_img.min()), 0, 1)
-
-            pred_img = torch.roll(torch.fft.irfftn(pred_fc[i].reshape(self.dft_shape)),
-                                  2 * (self.hparams.img_shape // 2,), (0, 1))
             pred_img = torch.clamp((pred_img - pred_img.min()) / (pred_img.max() - pred_img.min()), 0, 1)
-
-            y_img = y_real[i]
             y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
 
             self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), x_img.unsqueeze(0),
@@ -130,34 +203,40 @@ class TRecTransformerModule(LightningModule):
     def validation_epoch_end(self, outputs):
         val_loss = [o['val_loss'] for o in outputs]
         val_mse = [o['val_mse'] for o in outputs]
+        bin_mse = [o['bin_mse'] for o in outputs]
+        mean_val_mse = torch.mean(torch.stack(val_mse))
+        mean_bin_mse = torch.mean(torch.stack(bin_mse))
+        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (self.hparams.alpha * mean_bin_mse):
+            self.bin_count = 0
+            self.bin_factor = max(1, self.bin_factor - 1)
+            self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
+            print('Reduced bin_factor to {}.'.format(self.bin_factor))
+
+        self.bin_count += 1
+
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
-        self.log('Train/avg_val_mse', torch.mean(torch.stack(val_mse)), logger=True, on_epoch=True)
+        self.log('Train/avg_val_mse', mean_val_mse, logger=True, on_epoch=True)
+        self.log('Train/avg_bin_mse', mean_bin_mse, logger=True, on_epoch=True)
 
     def test_step(self, batch, batch_idx):
         x, y, y_real, (mag_min, mag_max) = batch
         assert len(x) == 1, 'Test images have to be evaluated independently.'
+        if self.bin_factor != 1:
+            print('bin_factor set to 1.')
+            self.bin_factor = 1
+        x_fc_, out_pos_emb, y_fc_ = self._bin_data(x, y)
 
-        pred = self(x)
+        pred = self.trec.forward(x_fc_, out_pos_emb)
 
-        pred_fc = convert2FC(pred, mag_min, mag_max)
-        pred_img = torch.roll(torch.fft.irfftn(pred_fc[0].reshape(self.dft_shape)),
+        pred_dft = convert_to_dft(fc=pred, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=self.dst_flatten_coords,
+                                  img_shape=self.hparams.img_shape)
+        pred_img = torch.roll(torch.fft.irfftn(pred_dft[0], s=2 * (self.hparams.img_shape,)),
                               2 * (self.hparams.img_shape // 2,), (0, 1))
-        return self.PSNR(y_real[0], pred_img, drange=torch.tensor(255., dtype=torch.float32))
+
+        return PSNR(self.circle * y_real[0], self.circle * pred_img, drange=torch.tensor(255., dtype=torch.float32))
 
     def test_epoch_end(self, outputs):
         outputs = torch.stack(outputs)
         self.log('Mean PSNR', torch.mean(outputs).detach().cpu().numpy(), logger=True)
-        self.log('SEM PSNR', torch.std(outputs/ np.sqrt(len(outputs))).detach().cpu().numpy(),
-                    logger=True)
-
-    def normalize_minmse(self, x, target):
-        """Affine rescaling of x, such that the mean squared error to target is minimal."""
-        cov = np.cov(x.detach().cpu().numpy().flatten(), target.detach().cpu().numpy().flatten())
-        alpha = cov[0, 1] / (cov[0, 0] + 1e-10)
-        beta = target.mean() - alpha * x.mean()
-        return alpha * x + beta
-
-    def PSNR(self, gt, img, drange):
-        img = self.normalize_minmse(img, gt)
-        mse = torch.mean(torch.square(gt - img))
-        return 20 * torch.log10(drange) - 10 * torch.log10(mse)
+        self.log('SEM PSNR', torch.std(outputs / np.sqrt(len(outputs))).detach().cpu().numpy(),
+                 logger=True)
