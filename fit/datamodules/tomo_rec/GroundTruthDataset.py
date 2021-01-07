@@ -6,16 +6,27 @@ from odl import uniform_discr
 
 
 class GroundTruthDataset(Dataset):
-    def __init__(self, train_gt_images, val_gt_images, test_gt_images):
+    def __init__(self, train_gt_images, val_gt_images, test_gt_images, inner_circle=True):
         self.train_gt_images = train_gt_images
         self.val_gt_images = val_gt_images
         self.test_gt_images = test_gt_images
+        assert self.train_gt_images.shape[1] == self.train_gt_images.shape[2], 'Train images are not square.'
+        assert self.train_gt_images.shape[1] % 2 == 1, 'Train image size has to be odd.'
+        assert self.val_gt_images.shape[1] == self.val_gt_images.shape[2], 'Val images are not square.'
+        assert self.val_gt_images.shape[1] % 2 == 1, 'Val image size has to be odd.'
+        assert self.test_gt_images.shape[1] == self.test_gt_images.shape[2], 'Test images are not square.'
+        assert self.test_gt_images.shape[1] % 2 == 1, 'Test image size has to be odd.'
 
         self.shape = (self.train_gt_images.shape[1], self.train_gt_images.shape[2])
-        min_pt = [-self.shape[0] / 2, -self.shape[1] / 2]
-        max_pt = [self.shape[0] / 2, self.shape[1] / 2]
-        space = uniform_discr(min_pt, max_pt, self.shape, dtype=np.float32)
+        if inner_circle:
+            circ_space = np.sqrt((self.shape[0]/2.)**2 /2.)
+            min_pt = [-circ_space, -circ_space]
+            max_pt = [circ_space, circ_space]
+        else:
+            min_pt = [-self.shape[0]/2., -self.shape[1]/2.]
+            max_pt = [self.shape[0]/2., self.shape[1]/2.]
 
+        space = uniform_discr(min_pt, max_pt, self.shape, dtype=np.float32)
         self.train_len = self.train_gt_images.shape[0]
         self.val_len = self.val_gt_images.shape[0]
         self.test_len = self.test_gt_images.shape[0]

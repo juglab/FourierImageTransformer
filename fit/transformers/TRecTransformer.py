@@ -56,12 +56,12 @@ class TRecTransformer(torch.nn.Module):
             2
         )
 
-    def forward(self, x):
+    def forward(self, x, out_pos_emb):
         x = self.fourier_coefficient_embedding(x)
         x = self.pos_embedding_input_projections(x)
         z = self.encoder(x, attn_mask=None)
 
-        output = torch.repeat_interleave(self.pos_embedding_target.pe, z.shape[0], dim=0)
+        output = torch.repeat_interleave(out_pos_emb, z.shape[0], dim=0)
         y_hat = self.decoder(output, z)
         y_hat = self.predictor(y_hat)
 

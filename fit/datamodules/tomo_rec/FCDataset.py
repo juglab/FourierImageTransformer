@@ -23,8 +23,8 @@ class FourierCoefficientDataset(FCDataset):
 
     def __getitem__(self, item):
         sino, img = self.ds[item]
-        sino_fft = torch.fft.rfftn(torch.roll(sino, sino.shape[1] // 2, 1), dim=[-1])
-        img_fft = torch.fft.rfftn(torch.roll(img, 2 * (img.shape[0] // 2,), (0, 1)), dim=[0, 1])
+        sino_fft = torch.fft.rfftn(torch.roll(sino, sino.shape[1] // 2 + 1, 1), dim=[-1])
+        img_fft = torch.fft.rfftn(torch.roll(img, 2 * (img.shape[0] // 2 + 1,), (0, 1)), dim=[0, 1])
 
         sino_mag = sino_fft.abs()
         sino_mag[sino_mag == 0] = 1.
