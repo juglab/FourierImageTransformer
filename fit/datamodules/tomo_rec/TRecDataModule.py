@@ -86,6 +86,8 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         self.gt_ds = None
         self.mean = None
         self.std = None
+        self.mag_min = None
+        self.mag_max = None
 
     def setup(self, stage: Optional[str] = None):
         mnist_test = MNIST(self.root_dir, train=False, download=True).data.type(torch.float32)
@@ -117,20 +119,27 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
             GroundTruthDataset(mnist_train, mnist_val, mnist_test),
             num_angles=self.num_angles, im_shape=70, impl='astra_cpu', inner_circle=self.inner_circle)
 
+        tmp_fcds = FourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+                                             img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE)
+        self.mag_min = tmp_fcds.mag_min
+        self.mag_max = tmp_fcds.mag_max
+
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
-            FourierCoefficientDataset(self.gt_ds, part='train', img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE),
+            FourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+                                      img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size, num_workers=2)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            FourierCoefficientDataset(self.gt_ds, part='validation',
+            FourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                       img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size, num_workers=2)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            FourierCoefficientDataset(self.gt_ds, part='test', img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE),
+            FourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+                                      img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE),
             batch_size=1)
 
 
@@ -173,18 +182,25 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
             GroundTruthDataset(gt_train, gt_val, gt_test),
             num_angles=self.num_angles, im_shape=450, impl='astra_cpu', inner_circle=self.inner_circle)
 
+        tmp_fcds = FourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+                                             img_shape=MNISTTomoFourierTargetDataModule.IMG_SHAPE)
+        self.mag_min = tmp_fcds.mag_min
+        self.mag_max = tmp_fcds.mag_max
+
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
-            FourierCoefficientDataset(self.gt_ds, part='train', img_shape=LoDoPaBFourierTargetDataModule.IMG_SHAPE),
+            FourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+                                      img_shape=LoDoPaBFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size, num_workers=2)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            FourierCoefficientDataset(self.gt_ds, part='validation',
+            FourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                       img_shape=LoDoPaBFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size, num_workers=2)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            FourierCoefficientDataset(self.gt_ds, part='test', img_shape=LoDoPaBFourierTargetDataModule.IMG_SHAPE),
+            FourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+                                      img_shape=LoDoPaBFourierTargetDataModule.IMG_SHAPE),
             batch_size=1)
