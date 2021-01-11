@@ -88,24 +88,17 @@ class TRecTransformerModule(LightningModule):
         }
 
     def _real_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
-        if self.bin_factor == 1:
-            dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
-                                      dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
-            y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
-                               2 * (self.hparams.img_shape // 2,), (1, 2))
-            return F.mse_loss(y_hat, target_real)
-        else:
-            dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
-                                      dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
-            dft_target = convert_to_dft(fc=target_fc, mag_min=mag_min, mag_max=mag_max,
-                                        dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
-            dft_pred *= self.mask
-            dft_target *= self.mask
-            y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
-                               2 * (self.hparams.img_shape // 2,), (1, 2))
-            y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
-                                  2 * (self.hparams.img_shape // 2,), (1, 2))
-            return F.mse_loss(y_hat, y_target)
+        dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
+                                  dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_target = convert_to_dft(fc=target_fc, mag_min=mag_min, mag_max=mag_max,
+                                    dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_pred *= self.mask
+        dft_target *= self.mask
+        y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                           2 * (self.hparams.img_shape // 2,), (1, 2))
+        y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                              2 * (self.hparams.img_shape // 2,), (1, 2))
+        return F.mse_loss(y_hat, y_target)
 
     def _fc_loss(self, pred_fc, target_fc):
         return F.mse_loss(pred_fc, target_fc)
