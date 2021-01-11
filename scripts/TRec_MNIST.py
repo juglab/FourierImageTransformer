@@ -76,7 +76,7 @@ def main():
                                                        dst_flatten_coords=model.dst_flatten_coords,
                                                        dst_order=model.dst_order)
 
-    test_res = trainer.test(model, test_dl)[0]
+    test_res = trainer.test(model, datamodule=dm)[0]
     out_res = {
         "Mean PSNR": test_res["Mean PSNR"].item(),
         "SEM PSNR": test_res["SEM PSNR"].item()
@@ -95,7 +95,7 @@ def main():
                                                        dst_flatten_coords=model.dst_flatten_coords,
                                                        dst_order=model.dst_order)
 
-    test_res = trainer.test(model, test_dl)[0]
+    test_res = trainer.test(model, datamodule=dm)[0]
     out_res = {
         "Mean PSNR": test_res["Mean PSNR"].item(),
         "SEM PSNR": test_res["SEM PSNR"].item()
