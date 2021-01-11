@@ -38,13 +38,12 @@ class FourierCoefficientDataset(FCDataset):
 
         mag_min, mag_max = sino_mag.min(), sino_mag.max()
 
-        sino_mag = (sino_mag - mag_min) / (mag_max - mag_min)
-        img_mag = (img_mag - mag_min) / (mag_max - mag_min)
+        sino_mag = 2 * (sino_mag - mag_min) / (mag_max - mag_min) - 1
+        img_mag = 2 * (img_mag - mag_min) / (mag_max - mag_min) - 1
 
-        sino_phi = sino_phi / (2 * np.pi)
-        img_phi = img_phi / (2 * np.pi)
+        sino_phi = 2 * sino_phi / (2 * np.pi) - 1
+        img_phi = 2 * img_phi / (2 * np.pi) - 1
 
         sino_fft = torch.stack([sino_mag.flatten(), sino_phi.flatten()], dim=-1)
         img_fft = torch.stack([img_mag.flatten(), img_phi.flatten()], dim=-1)
         return sino_fft, img_fft, img, (mag_min.unsqueeze(-1), mag_max.unsqueeze(-1))
-

@@ -1,6 +1,7 @@
 import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.core.step_result import TrainResult, EvalResult
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
 from fit.transformers.TRecTransformer import TRecTransformer
@@ -12,6 +13,8 @@ import numpy as np
 from torch.nn import functional as F
 import torch.fft
 
+from fit.utils.utils import denormalize
+
 
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, src_flatten_coords,
@@ -19,7 +22,6 @@ class TRecTransformerModule(LightningModule):
                  alpha=1.5, bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
-                 loss_switch=0.5,
                  attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
         super().__init__()
 
@@ -31,7 +33,6 @@ class TRecTransformerModule(LightningModule):
                                   "detector_len",
                                   "lr",
                                   "weight_decay",
-                                  "loss_switch",
                                   "attention_type",
                                   "n_layers",
                                   "n_heads",
@@ -68,9 +69,6 @@ class TRecTransformerModule(LightningModule):
                                     dropout=self.hparams.dropout,
                                     attention_dropout=self.hparams.attention_dropout)
 
-        self.criterion = self._fc_loss
-        self.using_real_loss = False
-
         x, y = torch.meshgrid(torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
                                            MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1),
                               torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
@@ -82,7 +80,12 @@ class TRecTransformerModule(LightningModule):
 
     def configure_optimizers(self):
         optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        return optimizer
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, verbose=True)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': scheduler,
+            'monitor': 'Train/avg_val_mse'
+        }
 
     def _real_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
         if self.bin_factor == 1:
@@ -104,8 +107,14 @@ class TRecTransformerModule(LightningModule):
                                   2 * (self.hparams.img_shape // 2,), (1, 2))
             return F.mse_loss(y_hat, y_target)
 
-    def _fc_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
+    def _fc_loss(self, pred_fc, target_fc):
         return F.mse_loss(pred_fc, target_fc)
+
+    def criterion(self, pred_fc, target_fc, target_real, mag_min, mag_max):
+        fc_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc)
+        real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, target_real=target_real, mag_min=mag_min,
+                                    mag_max=mag_max)
+        return fc_loss + real_loss
 
     def _bin_data(self, x_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
@@ -126,12 +135,6 @@ class TRecTransformerModule(LightningModule):
 
         loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
         return loss
-
-    def on_train_epoch_start(self):
-        if not self.using_real_loss and self.current_epoch >= (self.trainer.max_epochs * self.hparams.loss_switch):
-            self.criterion = self._real_loss
-            print('Epoch {}/{}: Switched to real loss.'.format(self.current_epoch, self.trainer.max_epochs - 1))
-            self.using_real_loss = True
 
     def training_epoch_end(self, outputs):
         loss = [d['loss'] for d in outputs]
@@ -206,7 +209,8 @@ class TRecTransformerModule(LightningModule):
         bin_mse = [o['bin_mse'] for o in outputs]
         mean_val_mse = torch.mean(torch.stack(val_mse))
         mean_bin_mse = torch.mean(torch.stack(bin_mse))
-        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (self.hparams.alpha * mean_bin_mse) and self.bin_factor > 1:
+        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (
+                self.hparams.alpha * mean_bin_mse) and self.bin_factor > 1:
             self.bin_count = 0
             self.bin_factor = max(1, self.bin_factor - 1)
             self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
@@ -233,7 +237,10 @@ class TRecTransformerModule(LightningModule):
         pred_img = torch.roll(torch.fft.irfftn(pred_dft[0], s=2 * (self.hparams.img_shape,)),
                               2 * (self.hparams.img_shape // 2,), (0, 1))
 
-        return PSNR(self.circle * y_real[0], self.circle * pred_img, drange=torch.tensor(255., dtype=torch.float32))
+        gt = denormalize(y_real[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
+        pred_img = denormalize(pred_img, self.trainer.datamodule.mean, self.trainer.datamodule.std)
+
+        return PSNR(self.circle * gt, self.circle * pred_img, drange=torch.tensor(255., dtype=torch.float32))
 
     def test_epoch_end(self, outputs):
         outputs = torch.stack(outputs)

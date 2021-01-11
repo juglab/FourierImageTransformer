@@ -24,7 +24,7 @@ def main():
         conf = json.load(f)
 
     dm = MNISTTomoFourierTargetDataModule(root_dir=conf['root_dir'], batch_size=conf['batch_size'],
-                                          num_angles=conf['num_angles'])
+                                          num_angles=conf['num_angles'], inner_circle=conf['inner_circle'])
     dm.setup()
 
     train_dl = dm.train_dataloader()
@@ -44,7 +44,7 @@ def main():
                                   angles=dm.gt_ds.get_ray_trafo().geometry.angles, img_shape=dm.IMG_SHAPE,
                                   detector_len=det_len,
                                   init_bin_factor=3, bin_factor_cd=10, alpha=1.5,
-                                  lr=0.0001, weight_decay=0.01, loss_switch=0.1, attention_type='linear', n_layers=8,
+                                  lr=0.0001, weight_decay=0.01, attention_type='linear', n_layers=8,
                                   n_heads=8, d_query=256 // 8, dropout=0.1, attention_dropout=0.1)
 
     if exists('lightning_logs'):
@@ -64,14 +64,17 @@ def main():
                       ),
                       deterministic=True)
 
-    trainer.fit(model, train_dl, val_dl);
+    trainer.fit(model, datamodule=dm);
 
     model = TRecTransformerModule.load_from_checkpoint('lightning_logs/version_0/checkpoints/best_val_loss_-last.ckpt',
                                                        y_coords_proj=model.y_coords_proj,
                                                        x_coords_proj=model.x_coords_proj,
                                                        y_coords_img=model.y_coords_img,
                                                        x_coords_img=model.x_coords_img,
-                                                       angles=model.angles)
+                                                       angles=model.angles,
+                                                       src_flatten_coords=model.src_flatten_coords,
+                                                       dst_flatten_coords=model.dst_flatten_coords,
+                                                       dst_order=model.dst_order)
 
     test_res = trainer.test(model, test_dl)[0]
     out_res = {
@@ -83,11 +86,14 @@ def main():
 
     best_path = glob.glob('lightning_logs/version_0/checkpoints/best_val_loss_-epoch*')[0]
     model = TRecTransformerModule.load_from_checkpoint(best_path,
-        y_coords_proj=model.y_coords_proj,
-        x_coords_proj=model.x_coords_proj,
-        y_coords_img=model.y_coords_img,
-        x_coords_img=model.x_coords_img,
-        angles=model.angles)
+                                                       y_coords_proj=model.y_coords_proj,
+                                                       x_coords_proj=model.x_coords_proj,
+                                                       y_coords_img=model.y_coords_img,
+                                                       x_coords_img=model.x_coords_img,
+                                                       angles=model.angles,
+                                                       src_flatten_coords=model.src_flatten_coords,
+                                                       dst_flatten_coords=model.dst_flatten_coords,
+                                                       dst_order=model.dst_order)
 
     test_res = trainer.test(model, test_dl)[0]
     out_res = {
