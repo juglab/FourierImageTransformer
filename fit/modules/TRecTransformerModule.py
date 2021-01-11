@@ -116,10 +116,9 @@ class TRecTransformerModule(LightningModule):
 
     def criterion(self, pred_fc, target_fc, target_real, mag_min, mag_max):
         fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min, mag_max=mag_max)
-        # real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, target_real=target_real, mag_min=mag_min,
-        #                             mag_max=mag_max)
-        # return fc_loss + real_loss
-        return fc_loss, amp_loss, phi_loss
+        real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, target_real=target_real, mag_min=mag_min,
+                                    mag_max=mag_max)
+        return fc_loss + real_loss, amp_loss, phi_loss
 
     def _bin_data(self, x_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
