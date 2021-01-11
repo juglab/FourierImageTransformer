@@ -2,6 +2,7 @@
   "root_dir": "/home/tibuch/Data/mnist",
   "batch_size": 4,
   "num_angles": 15,
+  "inner_circle": true,
   "n_heads": 8,
   "d_query": 16,
   "lr": 0.0001,

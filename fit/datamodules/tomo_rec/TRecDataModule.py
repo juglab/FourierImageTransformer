@@ -13,6 +13,7 @@ import odl
 from skimage.transform import resize
 
 from fit.utils.tomo_utils import get_detector_length
+from fit.utils.utils import normalize
 
 
 def get_projection_dataset(dataset, num_angles, im_shape=70, impl='astra_cpu', inner_circle=True):
@@ -83,15 +84,18 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         self.num_angles = num_angles
         self.inner_circle = inner_circle
         self.gt_ds = None
+        self.mean = None
+        self.std = None
 
     def setup(self, stage: Optional[str] = None):
-        mnist_test = MNIST(self.root_dir, train=False, download=True).data
-        mnist_train_test = MNIST(self.root_dir, train=True, download=True).data
+        mnist_test = MNIST(self.root_dir, train=False, download=True).data.type(torch.float32)
+        mnist_train_val = MNIST(self.root_dir, train=True, download=True).data.type(torch.float32)
         np.random.seed(1612)
-        perm = np.random.permutation(mnist_train_test.shape[0])
-        mnist_train = mnist_train_test[perm[:55000], 1:, 1:]
-        mnist_val = mnist_train_test[perm[55000:], 1:, 1:]
+        perm = np.random.permutation(mnist_train_val.shape[0])
+        mnist_train = mnist_train_val[perm[:55000], 1:, 1:]
+        mnist_val = mnist_train_val[perm[55000:], 1:, 1:]
         mnist_test = mnist_test[:, 1:, 1:]
+
         assert mnist_train.shape[1] == MNISTTomoFourierTargetDataModule.IMG_SHAPE
         assert mnist_train.shape[2] == MNISTTomoFourierTargetDataModule.IMG_SHAPE
         x, y = torch.meshgrid(torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
@@ -102,6 +106,13 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         mnist_train = circle * np.clip(mnist_train, 50, 255)
         mnist_val = circle * np.clip(mnist_val, 50, 255)
         mnist_test = circle * np.clip(mnist_test, 50, 255)
+
+        self.mean = mnist_train.mean()
+        self.std = mnist_train.std()
+
+        mnist_train = normalize(mnist_train, self.mean, self.std)
+        mnist_val = normalize(mnist_val, self.mean, self.std)
+        mnist_test = normalize(mnist_test, self.mean, self.std)
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(mnist_train, mnist_val, mnist_test),
             num_angles=self.num_angles, im_shape=70, impl='astra_cpu', inner_circle=self.inner_circle)
