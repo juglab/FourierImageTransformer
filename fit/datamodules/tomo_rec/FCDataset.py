@@ -28,6 +28,8 @@ class FourierCoefficientDataset(FCDataset):
 
             tmp_sinos = torch.stack(tmp_sinos)
             tmp_sinos = torch.fft.rfftn(tmp_sinos, dim=[1,2]).abs()
+            tmp_sinos[tmp_sinos == 0] = 1.
+            tmp_sinos = torch.log(tmp_sinos)
             self.mag_min = tmp_sinos.min()
             self.mag_max = tmp_sinos.max()
         else:
