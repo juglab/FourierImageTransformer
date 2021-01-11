@@ -100,14 +100,26 @@ class TRecTransformerModule(LightningModule):
                               2 * (self.hparams.img_shape // 2,), (1, 2))
         return F.mse_loss(y_hat, y_target)
 
-    def _fc_loss(self, pred_fc, target_fc):
-        return F.mse_loss(pred_fc, target_fc)
+    def _fc_loss(self, pred_fc, target_fc, mag_min, mag_max):
+        c1 = convert2FC(pred_fc, mag_min=mag_min, mag_max=mag_max)
+        c1 = torch.stack([c1.real, c1.imag], dim=-1)
+        c2 = convert2FC(target_fc, mag_min=mag_min, mag_max=mag_max)
+        c2 = torch.stack([c2.real, c2.imag], dim=-1)
+        amp1 = torch.linalg.norm(c1, dim=-1).unsqueeze(-1)
+        amp2 = torch.linalg.norm(c2, dim=-1).unsqueeze(-1)
+        c1_unit = c1 / amp1
+        c2_unit = c2 / amp2
+
+        amp_loss = (1 + torch.pow(amp1 - amp2, 2))
+        phi_loss = (2 - torch.sum(c1_unit * c2_unit, dim=-1, keepdim=True))
+        return torch.mean(amp_loss * phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
     def criterion(self, pred_fc, target_fc, target_real, mag_min, mag_max):
-        fc_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc)
-        real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, target_real=target_real, mag_min=mag_min,
-                                    mag_max=mag_max)
-        return fc_loss + real_loss
+        fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min, mag_max=mag_max)
+        # real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, target_real=target_real, mag_min=mag_min,
+        #                             mag_max=mag_max)
+        # return fc_loss + real_loss
+        return fc_loss, amp_loss, phi_loss
 
     def _bin_data(self, x_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
@@ -126,12 +138,16 @@ class TRecTransformerModule(LightningModule):
 
         pred = self.trec.forward(x_fc_, out_pos_emb)
 
-        loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
-        return loss
+        fc_loss, amp_loss, phi_loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
+        return {'loss': fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
 
     def training_epoch_end(self, outputs):
         loss = [d['loss'] for d in outputs]
+        amp_loss = [d['amp_loss'] for d in outputs]
+        phi_loss = [d['phi_loss'] for d in outputs]
         self.log('Train/loss', torch.mean(torch.stack(loss)), logger=True, on_epoch=True)
+        self.log('Train/amp_loss', torch.mean(torch.stack(amp_loss)), logger=True, on_epoch=True)
+        self.log('Train/phi_loss', torch.mean(torch.stack(phi_loss)), logger=True, on_epoch=True)
 
     def _monitor_mse(self, pred, y_real, mag_min, mag_max):
         dft_pred = convert_to_dft(fc=pred, mag_min=mag_min, mag_max=mag_max,
@@ -145,7 +161,7 @@ class TRecTransformerModule(LightningModule):
         x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
         pred = self.trec.forward(x_fc_, out_pos_emb)
 
-        val_loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
+        val_loss, amp_loss, phi_loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
 
         val_mse = self._monitor_mse(pred, y_real, mag_min=mag_min, mag_max=mag_max)
         bin_mse = self._monitor_mse(y_fc_, y_real, mag_min=mag_min, mag_max=mag_max)
@@ -154,7 +170,7 @@ class TRecTransformerModule(LightningModule):
         self.log_dict({'bin_mse': bin_mse})
         if batch_idx == 0:
             self.log_val_images(pred, x_fc, y_fc_, y_real, mag_min, mag_max)
-        return {'val_loss': val_loss, 'val_mse': val_mse, 'bin_mse': bin_mse}
+        return {'val_loss': val_loss, 'val_mse': val_mse, 'bin_mse': bin_mse, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
 
     def log_val_images(self, pred, x, y_fc, y_real, mag_min, mag_max):
         x_fc = convert2FC(x, mag_min, mag_max)
@@ -200,6 +216,8 @@ class TRecTransformerModule(LightningModule):
         val_loss = [o['val_loss'] for o in outputs]
         val_mse = [o['val_mse'] for o in outputs]
         bin_mse = [o['bin_mse'] for o in outputs]
+        amp_loss = [d['amp_loss'] for d in outputs]
+        phi_loss = [d['phi_loss'] for d in outputs]
         mean_val_mse = torch.mean(torch.stack(val_mse))
         mean_bin_mse = torch.mean(torch.stack(bin_mse))
         if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (
@@ -214,6 +232,8 @@ class TRecTransformerModule(LightningModule):
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
         self.log('Train/avg_val_mse', mean_val_mse, logger=True, on_epoch=True)
         self.log('Train/avg_bin_mse', mean_bin_mse, logger=True, on_epoch=True)
+        self.log('Train/avg_val_amp_loss', torch.mean(torch.stack(amp_loss)), logger=True, on_epoch=True)
+        self.log('Train/avg_val_phi_loss', torch.mean(torch.stack(phi_loss)), logger=True, on_epoch=True)
 
     def test_step(self, batch, batch_idx):
         x, y, y_real, (mag_min, mag_max) = batch
