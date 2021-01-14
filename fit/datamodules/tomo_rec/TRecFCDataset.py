@@ -4,22 +4,11 @@ import torch.fft
 from torch.utils.data import Dataset
 
 
-class FCDataset(Dataset):
-    def __init__(self, ds, part='train', img_shape=42):
+class TRecFourierCoefficientDataset(Dataset):
+    def __init__(self, ds, mag_min, mag_max, part='train', img_shape=42):
         self.ds = ds.create_torch_dataset(part=part)
         self.img_shape = img_shape
         self.angles = ds.ray_trafo.geometry.angles
-
-    def __getitem__(self, i):
-        raise NotImplementedError()
-
-    def __len__(self):
-        return len(self.ds)
-
-
-class FourierCoefficientDataset(FCDataset):
-    def __init__(self, ds, mag_min, mag_max, part='train', img_shape=42):
-        super().__init__(ds, part=part, img_shape=img_shape)
         if mag_min == None and mag_max == None:
             tmp_sinos = []
             for i in np.random.permutation(len(self.ds))[:200]:
@@ -27,7 +16,7 @@ class FourierCoefficientDataset(FCDataset):
                 tmp_sinos.append(sino)
 
             tmp_sinos = torch.stack(tmp_sinos)
-            tmp_sinos = torch.fft.rfftn(tmp_sinos, dim=[1,2]).abs()
+            tmp_sinos = torch.fft.rfftn(tmp_sinos, dim=[1, 2]).abs()
             tmp_sinos[tmp_sinos == 0] = 1.
             tmp_sinos = torch.log(tmp_sinos)
             self.mag_min = tmp_sinos.min()
@@ -60,3 +49,6 @@ class FourierCoefficientDataset(FCDataset):
         sino_fft = torch.stack([sino_mag.flatten(), sino_phi.flatten()], dim=-1)
         img_fft = torch.stack([img_mag.flatten(), img_phi.flatten()], dim=-1)
         return sino_fft, img_fft, img, (self.mag_min.unsqueeze(-1), self.mag_max.unsqueeze(-1))
+
+    def __len__(self):
+        return len(self.ds)

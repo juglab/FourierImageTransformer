@@ -2,6 +2,8 @@ import torch
 from fast_transformers.builders import TransformerDecoderBuilder, TransformerEncoderBuilder
 
 from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
+from fit.utils import convert2FC, convert_to_dft
+from torch.nn import functional as F
 
 
 class TRecTransformer(torch.nn.Module):
@@ -56,7 +58,17 @@ class TRecTransformer(torch.nn.Module):
             2
         )
 
-    def forward(self, x, out_pos_emb):
+        self.conv_block = torch.nn.Sequential(
+            torch.nn.Conv2d(1, d_query, kernel_size=1, stride=1, padding=0),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(d_query),
+            torch.nn.Conv2d(d_query, d_query, kernel_size=3, stride=1, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(d_query),
+            torch.nn.Conv2d(d_query, 1, kernel_size=1, stride=1, padding=0)
+        )
+
+    def forward(self, x, out_pos_emb, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
         x = self.fourier_coefficient_embedding(x)
         x = self.pos_embedding_input_projections(x)
         z = self.encoder(x, attn_mask=None)
@@ -65,4 +77,12 @@ class TRecTransformer(torch.nn.Module):
         y_hat = self.decoder(output, z)
         y_hat = self.predictor(y_hat)
 
-        return y_hat
+        dft_hat = convert_to_dft(y_hat, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
+                                  img_shape=img_shape)
+        dft_hat *= attenuation
+        img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
+                           2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
+        img_post = self.conv_block(img_hat)
+        img_post += img_hat
+
+        return y_hat, img_post[:,0]

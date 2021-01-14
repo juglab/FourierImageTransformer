@@ -1,2 +1,2 @@
-from .FCDataset import FourierCoefficientDataset
+from .TRecFCDataset import TRecFourierCoefficientDataset
 from .TRecDataModule import MNISTTomoFourierTargetDataModule

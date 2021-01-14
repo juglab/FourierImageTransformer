@@ -1,7 +1,6 @@
 import argparse
 import glob
 import json
-from os import mkdir
 from os.path import exists
 
 from pytorch_lightning import Trainer, seed_everything
@@ -27,25 +26,24 @@ def main():
                                           num_angles=conf['num_angles'], inner_circle=conf['inner_circle'])
     dm.setup()
 
-    train_dl = dm.train_dataloader()
-    val_dl = dm.val_dataloader()
-    test_dl = dm.test_dataloader()
-
     det_len = dm.gt_ds.get_ray_trafo().geometry.detector.shape[0]
 
     proj_xcoords, proj_ycoords, src_flatten = get_proj_coords(angles=dm.gt_ds.get_ray_trafo().geometry.angles,
                                                               det_len=det_len)
     target_xcoords, target_ycoords, dst_flatten, order = get_img_coords(img_shape=dm.IMG_SHAPE, det_len=det_len)
 
-    model = TRecTransformerModule(d_model=256, y_coords_proj=proj_ycoords, x_coords_proj=proj_xcoords,
+    model = TRecTransformerModule(d_model=conf['n_heads'] * conf['d_query'],
+                                  y_coords_proj=proj_ycoords, x_coords_proj=proj_xcoords,
                                   y_coords_img=target_ycoords, x_coords_img=target_xcoords,
                                   src_flatten_coords=src_flatten, dst_flatten_coords=dst_flatten,
                                   dst_order=order,
                                   angles=dm.gt_ds.get_ray_trafo().geometry.angles, img_shape=dm.IMG_SHAPE,
                                   detector_len=det_len,
-                                  init_bin_factor=3, bin_factor_cd=10, alpha=1.5,
-                                  lr=0.0001, weight_decay=0.01, attention_type='linear', n_layers=8,
-                                  n_heads=8, d_query=256 // 8, dropout=0.1, attention_dropout=0.1)
+                                  init_bin_factor=conf['init_bin_factor'], bin_factor_cd=conf['bin_factor_cd'],
+                                  alpha=conf['alpha'],
+                                  lr=conf['lr'], weight_decay=0.01,
+                                  attention_type=conf['attention_type'], n_layers=conf['n_layers'],
+                                  n_heads=conf['n_heads'], d_query=conf['d_query'], dropout=0.1, attention_dropout=0.1)
 
     if exists('lightning_logs'):
         print('Some experiments already exist. Abort.')

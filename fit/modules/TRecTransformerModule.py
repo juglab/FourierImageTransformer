@@ -87,18 +87,13 @@ class TRecTransformerModule(LightningModule):
             'monitor': 'Train/avg_val_mse'
         }
 
-    def _real_loss(self, pred_fc, target_fc, target_real, mag_min, mag_max):
-        dft_pred = convert_to_dft(fc=pred_fc, mag_min=mag_min, mag_max=mag_max,
-                                  dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+    def _real_loss(self, pred_img, target_fc, mag_min, mag_max):
         dft_target = convert_to_dft(fc=target_fc, mag_min=mag_min, mag_max=mag_max,
                                     dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
-        dft_pred *= self.mask
         dft_target *= self.mask
-        y_hat = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
-                           2 * (self.hparams.img_shape // 2,), (1, 2))
         y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
                               2 * (self.hparams.img_shape // 2,), (1, 2))
-        return F.mse_loss(y_hat, y_target)
+        return F.mse_loss(pred_img, y_target)
 
     def _fc_loss(self, pred_fc, target_fc, mag_min, mag_max):
         c1 = convert2FC(pred_fc, mag_min=mag_min, mag_max=mag_max)
@@ -114,9 +109,10 @@ class TRecTransformerModule(LightningModule):
         phi_loss = (2 - torch.sum(c1_unit * c2_unit, dim=-1, keepdim=True))
         return torch.mean(amp_loss * phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
-    def criterion(self, pred_fc, target_fc, target_real, mag_min, mag_max):
-        fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min, mag_max=mag_max)
-        real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, target_real=target_real, mag_min=mag_min,
+    def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
+        fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
+                                                    mag_max=mag_max)
+        real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
                                     mag_max=mag_max)
         return fc_loss + real_loss, amp_loss, phi_loss
 
@@ -135,9 +131,12 @@ class TRecTransformerModule(LightningModule):
         x_fc, y_fc, y_real, (mag_min, mag_max) = batch
         x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
 
-        pred = self.trec.forward(x_fc_, out_pos_emb)
+        pred_fc, pred_img = self.trec.forward(x_fc_, out_pos_emb, mag_min=mag_min, mag_max=mag_max,
+                                              dst_flatten_coords=self.dst_flatten_coords,
+                                              img_shape=self.hparams.img_shape,
+                                              attenuation=self.mask)
 
-        fc_loss, amp_loss, phi_loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
+        fc_loss, amp_loss, phi_loss = self.criterion(pred_fc, pred_img, y_fc_, mag_min, mag_max)
         return {'loss': fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
 
     def training_epoch_end(self, outputs):
@@ -158,23 +157,25 @@ class TRecTransformerModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         x_fc, y_fc, y_real, (mag_min, mag_max) = batch
         x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
-        pred = self.trec.forward(x_fc_, out_pos_emb)
+        pred_fc, pred_img = self.trec.forward(x_fc_, out_pos_emb, mag_min=mag_min, mag_max=mag_max,
+                                              dst_flatten_coords=self.dst_flatten_coords,
+                                              img_shape=self.hparams.img_shape,
+                                              attenuation=self.mask)
 
-        val_loss, amp_loss, phi_loss = self.criterion(pred, y_fc_, y_real, mag_min, mag_max)
+        val_loss, amp_loss, phi_loss = self.criterion(pred_fc, pred_img, y_fc_, mag_min, mag_max)
 
-        val_mse = self._monitor_mse(pred, y_real, mag_min=mag_min, mag_max=mag_max)
+        val_mse = F.mse_loss(pred_img, y_real)
         bin_mse = self._monitor_mse(y_fc_, y_real, mag_min=mag_min, mag_max=mag_max)
         self.log_dict({'val_loss': val_loss})
         self.log_dict({'val_mse': val_mse})
         self.log_dict({'bin_mse': bin_mse})
         if batch_idx == 0:
-            self.log_val_images(pred, x_fc, y_fc_, y_real, mag_min, mag_max)
-        return {'val_loss': val_loss, 'val_mse': val_mse, 'bin_mse': bin_mse, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
+            self.log_val_images(pred_img, x_fc, y_fc_, y_real, mag_min, mag_max)
+        return {'val_loss': val_loss, 'val_mse': val_mse, 'bin_mse': bin_mse, 'amp_loss': amp_loss,
+                'phi_loss': phi_loss}
 
-    def log_val_images(self, pred, x, y_fc, y_real, mag_min, mag_max):
+    def log_val_images(self, pred_img, x, y_fc, y_real, mag_min, mag_max):
         x_fc = convert2FC(x, mag_min, mag_max)
-        dft_pred = convert_to_dft(fc=pred, mag_min=mag_min, mag_max=mag_max,
-                                  dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
         dft_target = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
                                     dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
 
@@ -188,25 +189,22 @@ class TRecTransformerModule(LightningModule):
             if self.bin_factor == 1:
                 x_img = torch.roll(torch.fft.irfftn(torch.from_numpy(x_dft), s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
-                pred_img = torch.roll(torch.fft.irfftn(dft_pred[i]),
-                                      2 * (self.hparams.img_shape // 2,), (0, 1))
                 y_img = y_real[i]
             else:
-                x_img = torch.roll(torch.fft.irfftn(self.mask * torch.from_numpy(x_dft).to(pred.device),
+                x_img = torch.roll(torch.fft.irfftn(self.mask * torch.from_numpy(x_dft).to(pred_img.device),
                                                     s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
-                pred_img = torch.roll(torch.fft.irfftn(self.mask * dft_pred[i], s=2 * (self.hparams.img_shape,)),
-                                      2 * (self.hparams.img_shape // 2,), (0, 1))
                 y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
 
             x_img = torch.clamp((x_img - x_img.min()) / (x_img.max() - x_img.min()), 0, 1)
-            pred_img = torch.clamp((pred_img - pred_img.min()) / (pred_img.max() - pred_img.min()), 0, 1)
+            pred_img_ = pred_img[i]
+            pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) / (pred_img_.max() - pred_img_.min()), 0, 1)
             y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
 
             self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), x_img.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
-            self.trainer.logger.experiment.add_image('predcitions/img_{}'.format(i), pred_img.unsqueeze(0),
+            self.trainer.logger.experiment.add_image('predcitions/img_{}'.format(i), pred_img_.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
             self.trainer.logger.experiment.add_image('targets/img_{}'.format(i), y_img.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
@@ -242,15 +240,14 @@ class TRecTransformerModule(LightningModule):
             self.bin_factor = 1
         x_fc_, out_pos_emb, y_fc_ = self._bin_data(x, y)
 
-        pred = self.trec.forward(x_fc_, out_pos_emb)
+        _, pred_img = self.trec.forward(x_fc_, out_pos_emb, mag_min=mag_min, mag_max=mag_max,
+                                              dst_flatten_coords=self.dst_flatten_coords,
+                                              img_shape=self.hparams.img_shape,
+                                              attenuation=self.mask)
 
-        pred_dft = convert_to_dft(fc=pred, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=self.dst_flatten_coords,
-                                  img_shape=self.hparams.img_shape)
-        pred_img = torch.roll(torch.fft.irfftn(pred_dft[0], s=2 * (self.hparams.img_shape,)),
-                              2 * (self.hparams.img_shape // 2,), (0, 1))
 
         gt = denormalize(y_real[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
-        pred_img = denormalize(pred_img, self.trainer.datamodule.mean, self.trainer.datamodule.std)
+        pred_img = denormalize(pred_img[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
 
         return PSNR(self.circle * gt, self.circle * pred_img, drange=torch.tensor(255., dtype=torch.float32))
 

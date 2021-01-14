@@ -5,9 +5,11 @@
   "inner_circle": true,
   "n_heads": 8,
   "d_query": 16,
+  "init_bin_factor": 3,
+  "bin_factor_cd": 5,
+  "alpha": 1.5,
   "lr": 0.0001,
-  "loss_switch": 0.2,
   "attention_type": "linear",
   "n_layers": 8,
-  "max_epochs": 10
+  "max_epochs": 100
 }
