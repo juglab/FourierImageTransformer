@@ -179,7 +179,7 @@ class TRecTransformerModule(LightningModule):
         dft_target = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
                                     dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
 
-        for i in range(3):
+        for i in range(min(3, len(pred_img))):
             x_dft = fft_interpolate(self.x_coords_proj.cpu().numpy(), self.y_coords_proj.cpu().numpy(),
                                     self.x_coords_img.cpu().numpy(), self.y_coords_img.cpu().numpy(),
                                     x_fc[i][self.src_flatten_coords].cpu().numpy(),
