@@ -105,7 +105,7 @@ class TRecTransformerModule(LightningModule):
         c1_unit = c1 / amp1
         c2_unit = c2 / amp2
 
-        amp_loss = (1 + torch.pow(amp1 - amp2, 2))
+        amp_loss = (1 + torch.pow(pred_fc[..., 0] - target_fc[..., 0], 2))
         phi_loss = (2 - torch.sum(c1_unit * c2_unit, dim=-1, keepdim=True))
         return torch.mean(amp_loss * phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
