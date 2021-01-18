@@ -1,6 +1,5 @@
 import torch
 from pytorch_lightning import LightningModule
-from pytorch_lightning.core.step_result import TrainResult, EvalResult
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
@@ -69,11 +68,11 @@ class TRecTransformerModule(LightningModule):
                                     dropout=self.hparams.dropout,
                                     attention_dropout=self.hparams.attention_dropout)
 
-        x, y = torch.meshgrid(torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
-                                           MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1),
-                              torch.arange(-MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1,
-                                           MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2 + 1))
-        self.register_buffer('circle', torch.sqrt(x ** 2. + y ** 2.) <= MNISTTomoFourierTargetDataModule.IMG_SHAPE // 2)
+        x, y = torch.meshgrid(torch.arange(-self.hparams.img_shape // 2 + 1,
+                                           self.hparams.img_shape // 2 + 1),
+                              torch.arange(-self.hparams.img_shape // 2 + 1,
+                                           self.hparams.img_shape // 2 + 1))
+        self.register_buffer('circle', torch.sqrt(x ** 2. + y ** 2.) <= self.hparams.img_shape // 2)
 
     def forward(self, x, out_pos_emb):
         return self.trec.forward(x, out_pos_emb)
