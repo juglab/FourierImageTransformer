@@ -178,6 +178,13 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
         gt_train *= circle
         gt_val *= circle
         gt_test *= circle
+
+        self.mean = gt_train.mean()
+        self.std = gt_train.std()
+
+        gt_train = normalize(gt_train, self.mean, self.std)
+        gt_val = normalize(gt_val, self.mean, self.std)
+        gt_test = normalize(gt_test, self.mean, self.std)
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(gt_train, gt_val, gt_test),
             num_angles=self.num_angles, im_shape=450, impl='astra_cpu', inner_circle=self.inner_circle)
