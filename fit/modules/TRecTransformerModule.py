@@ -223,6 +223,9 @@ class TRecTransformerModule(LightningModule):
             self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
             print('Reduced bin_factor to {}.'.format(self.bin_factor))
 
+        if self.bin_factor > 1:
+            self.trainer.lr_schedulers[0]['scheduler']._reset()
+
         self.bin_count += 1
 
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
