@@ -158,7 +158,7 @@ class TRecTransformerModule(LightningModule):
         for i in range(len(pred_img_norm)):
             gt = self.circle * y_real_norm[i]
             psnrs.append(PSNR(gt, self.circle * pred_img_norm[i],
-                              drange=gt.max()-gt.min()))
+                              drange=gt.max() - gt.min()))
 
         return torch.mean(torch.stack(psnrs))
 
