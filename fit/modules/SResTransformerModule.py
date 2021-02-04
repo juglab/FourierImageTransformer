@@ -10,7 +10,7 @@ import numpy as np
 
 import torch.fft
 
-from fit.utils.utils import denormalize
+from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 
 
 class SResTransformerModule(LightningModule):
@@ -70,18 +70,15 @@ class SResTransformerModule(LightningModule):
         }
 
     def _fc_loss(self, pred_fc, target_fc, mag_min, mag_max):
-        c1 = convert2FC(pred_fc, mag_min=mag_min, mag_max=mag_max)
-        c1 = torch.stack([c1.real, c1.imag], dim=-1)
-        c2 = convert2FC(target_fc, mag_min=mag_min, mag_max=mag_max)
-        c2 = torch.stack([c2.real, c2.imag], dim=-1)
-        amp1 = torch.linalg.norm(c1, dim=-1).unsqueeze(-1)
-        amp2 = torch.linalg.norm(c2, dim=-1).unsqueeze(-1)
-        c1_unit = c1 / amp1
-        c2_unit = c2 / amp2
+        pred_amp = denormalize_amp(pred_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
+        target_amp = denormalize_amp(target_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
 
-        amp_loss = (1 + torch.pow(amp1 - amp2, 2))
-        phi_loss = (2 - torch.sum(c1_unit * c2_unit, dim=-1, keepdim=True))
-        return torch.mean(amp_loss * phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
+        pred_phi = denormalize_phi(pred_fc[..., 1])
+        target_phi = denormalize_phi(target_fc[..., 1])
+
+        amp_loss = torch.pow(pred_amp - target_amp, 2)
+        phi_loss = 1 - torch.cos(pred_phi - target_phi)
+        return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
     def criterion(self, pred_fc, target_fc, mag_min, mag_max):
         fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,

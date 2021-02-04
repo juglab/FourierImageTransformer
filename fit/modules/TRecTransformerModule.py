@@ -12,7 +12,7 @@ import numpy as np
 from torch.nn import functional as F
 import torch.fft
 
-from fit.utils.utils import denormalize
+from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 
 
 class TRecTransformerModule(LightningModule):
@@ -95,17 +95,14 @@ class TRecTransformerModule(LightningModule):
         return F.mse_loss(pred_img, y_target)
 
     def _fc_loss(self, pred_fc, target_fc, mag_min, mag_max):
-        c1 = convert2FC(pred_fc, mag_min=mag_min, mag_max=mag_max)
-        c1 = torch.stack([c1.real, c1.imag], dim=-1)
-        c2 = convert2FC(target_fc, mag_min=mag_min, mag_max=mag_max)
-        c2 = torch.stack([c2.real, c2.imag], dim=-1)
-        amp1 = torch.linalg.norm(c1, dim=-1).unsqueeze(-1)
-        amp2 = torch.linalg.norm(c2, dim=-1).unsqueeze(-1)
-        c1_unit = c1 / amp1
-        c2_unit = c2 / amp2
+        pred_amp = denormalize_amp(pred_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
+        target_amp = denormalize_amp(target_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
 
-        amp_loss = (1 + torch.pow(pred_fc[..., 0] - target_fc[..., 0], 2)).unsqueeze(-1)
-        phi_loss = (2 - torch.sum(c1_unit * c2_unit, dim=-1, keepdim=True))
+        pred_phi = denormalize_phi(pred_fc[..., 1])
+        target_phi = denormalize_phi(target_fc[..., 1])
+
+        amp_loss = 1 + torch.pow(pred_amp - target_amp, 2)
+        phi_loss = 2 - torch.cos(pred_phi - target_phi)
         return torch.mean(amp_loss * phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
     def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
@@ -161,7 +158,7 @@ class TRecTransformerModule(LightningModule):
         for i in range(len(pred_img_norm)):
             gt = self.circle * y_real_norm[i]
             psnrs.append(PSNR(gt, self.circle * pred_img_norm[i],
-                              drange=gt.max()-gt.min()))
+                              drange=gt.max() - gt.min()))
 
         return torch.mean(torch.stack(psnrs))
 
@@ -267,8 +264,9 @@ class TRecTransformerModule(LightningModule):
 
         gt = denormalize(y_real[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
         pred_img = denormalize(pred_img[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
-        
-        return PSNR(self.circle * gt, self.circle * pred_img, drange=gt.max()-gt.min())
+
+        gt = self.circle * gt
+        return PSNR(gt, self.circle * pred_img, drange=gt.max() - gt.min())
 
     def test_epoch_end(self, outputs):
         outputs = torch.stack(outputs)
