@@ -4,15 +4,22 @@ import torch
 
 
 def convert2FC(x, mag_min, mag_max):
-    mag = x[..., 0]
-    phi = x[..., 1]
-    mag = (mag + 1) / 2.
-    mag = (mag * (mag_max - mag_min)) + mag_min
-    mag = torch.exp(mag)
+    mag = denormalize_amp(x[..., 0], mag_max=mag_max, mag_min=mag_min)
+    phi = denormalize_phi(x[..., 1])
+    return torch.complex(mag * torch.cos(phi), mag * torch.sin(phi))
 
+
+def denormalize_phi(phi):
     phi = (phi + 1) / 2.
     phi = phi * 2 * np.pi
-    return torch.complex(mag * torch.cos(phi), mag * torch.sin(phi))
+    return phi
+
+
+def denormalize_amp(amp, mag_min, mag_max):
+    amp = (amp + 1) / 2.
+    amp = (amp * (mag_max - mag_min)) + mag_min
+    amp = torch.exp(amp)
+    return amp
 
 
 def fft_interpolate(srcx, srcy, dstx, dsty, sino_fft, target_shape, dst_flatten_order):
