@@ -264,8 +264,9 @@ class TRecTransformerModule(LightningModule):
 
         gt = denormalize(y_real[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
         pred_img = denormalize(pred_img[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
-        
-        return PSNR(self.circle * gt, self.circle * pred_img, drange=gt.max()-gt.min())
+
+        gt = self.circle * gt
+        return PSNR(gt, self.circle * pred_img, drange=gt.max() - gt.min())
 
     def test_epoch_end(self, outputs):
         outputs = torch.stack(outputs)
