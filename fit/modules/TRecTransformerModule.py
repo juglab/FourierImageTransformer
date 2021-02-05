@@ -229,11 +229,10 @@ class TRecTransformerModule(LightningModule):
         phi_loss = [d['phi_loss'] for d in outputs]
         mean_val_mse = torch.mean(torch.stack(val_mse))
         mean_val_psnr = torch.mean(torch.stack(val_psnr))
-        mean_bin_mse = torch.mean(torch.stack(bin_mse))
-        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < (
-                self.hparams.alpha * mean_bin_mse) and self.bin_factor > 1:
+        bin_factor_threshold = torch.mean(torch.stack(bin_mse)) * self.bin_factor
+        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < bin_factor_threshold and self.bin_factor > 1:
             self.bin_count = 0
-            self.bin_factor = max(1, self.bin_factor - 1)
+            self.bin_factor = max(1, self.bin_factor // 2)
             self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
             print('Reduced bin_factor to {}.'.format(self.bin_factor))
 
@@ -245,7 +244,7 @@ class TRecTransformerModule(LightningModule):
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
         self.log('Train/avg_val_mse', mean_val_mse, logger=True, on_epoch=True)
         self.log('Train/avg_val_psnr', mean_val_psnr, logger=True, on_epoch=True)
-        self.log('Train/avg_bin_mse', mean_bin_mse, logger=True, on_epoch=True)
+        self.log('Train/avg_bin_mse', bin_factor_threshold, logger=True, on_epoch=True)
         self.log('Train/avg_val_amp_loss', torch.mean(torch.stack(amp_loss)), logger=True, on_epoch=True)
         self.log('Train/avg_val_phi_loss', torch.mean(torch.stack(phi_loss)), logger=True, on_epoch=True)
 
