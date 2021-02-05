@@ -18,7 +18,7 @@ from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, src_flatten_coords,
                  dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27, init_bin_factor=4,
-                 alpha=1.5, bin_factor_cd=10,
+                 bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
                  attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
@@ -26,7 +26,6 @@ class TRecTransformerModule(LightningModule):
 
         self.save_hyperparameters("d_model",
                                   "img_shape",
-                                  "alpha",
                                   "bin_factor_cd",
                                   "init_bin_factor",
                                   "detector_len",
