@@ -1,8 +1,12 @@
+from glob import glob
+from os.path import join
 from typing import Optional, Union, List
 
 import numpy as np
 import torch
+from imageio import imread
 from pytorch_lightning import LightningDataModule
+from skimage.transform import resize
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
@@ -14,7 +18,7 @@ from fit.utils.utils import normalize
 class MNISTSResFourierTargetDataModule(LightningDataModule):
     IMG_SHAPE = 27
 
-    def __init__(self, root_dir, batch_size, inner_circle=True):
+    def __init__(self, root_dir, batch_size):
         """
         :param root_dir:
         :param batch_size:
@@ -23,7 +27,6 @@ class MNISTSResFourierTargetDataModule(LightningDataModule):
         super().__init__()
         self.root_dir = root_dir
         self.batch_size = batch_size
-        self.inner_circle = inner_circle
         self.gt_ds = None
         self.mean = None
         self.std = None
@@ -75,4 +78,61 @@ class MNISTSResFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
+            batch_size=1)
+
+
+class CelebASResFourierTargetDataModule(LightningDataModule):
+    IMG_SHAPE = 127
+
+    def __init__(self, root_dir, batch_size):
+        """
+        :param root_dir:
+        :param batch_size:
+        :param num_angles:
+        """
+        super().__init__()
+        self.root_dir = root_dir
+        self.gt_shape = 63
+        self.batch_size = batch_size
+        self.gt_ds = None
+        self.mean = None
+        self.std = None
+        self.mag_min = None
+        self.mag_max = None
+
+    def setup(self, stage: Optional[str] = None):
+        gt_data = np.load(join(self.root_dir, 'gt_data.npz'))
+
+        gt_train = torch.from_numpy(gt_data['gt_train'])
+        gt_val = torch.from_numpy(gt_data['gt_val'])
+        gt_test = torch.from_numpy(gt_data['gt_test'])
+        self.mean = gt_train.mean()
+        self.std = gt_train.std()
+
+        gt_train = normalize(gt_train, self.mean, self.std)
+        gt_val = normalize(gt_val, self.mean, self.std)
+        gt_test = normalize(gt_test, self.mean, self.std)
+        self.gt_ds = GroundTruthDataset(gt_train, gt_val, gt_test)
+
+        tmp_fcds = SResFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+                                                 img_shape=self.gt_shape)
+        self.mag_min = tmp_fcds.mag_min
+        self.mag_max = tmp_fcds.mag_max
+
+    def train_dataloader(self, *args, **kwargs) -> DataLoader:
+        return DataLoader(
+            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+                                          img_shape=self.gt_shape),
+            batch_size=self.batch_size, num_workers=2)
+
+    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
+                                          img_shape=self.gt_shape),
+            batch_size=self.batch_size, num_workers=2)
+
+    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+                                          img_shape=self.gt_shape),
             batch_size=1)
