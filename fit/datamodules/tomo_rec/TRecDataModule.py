@@ -1,8 +1,11 @@
+from glob import glob
+from os.path import join
 from typing import Optional, Union, List
 
 import dival
 import numpy as np
 import torch
+from imageio import imread
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
@@ -166,8 +169,8 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
         assert self.gt_shape <= self.IMG_SHAPE, 'GT is larger than original images.'
         if self.gt_shape < self.IMG_SHAPE:
             gt_train = np.array([resize(lodopab.get_sample(i, part='train', out=(False, True))[1][1:, 1:],
-                                    output_shape=(self.gt_shape, self.gt_shape), anti_aliasing=True) for i in
-                             range(4000)])
+                                        output_shape=(self.gt_shape, self.gt_shape), anti_aliasing=True) for i in
+                                 range(4000)])
             gt_val = np.array([resize(lodopab.get_sample(i, part='validation', out=(False, True))[1][1:, 1:],
                                       output_shape=(self.gt_shape, self.gt_shape), anti_aliasing=True) for i in
                                range(400)])
@@ -175,11 +178,11 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
                                        output_shape=(self.gt_shape, self.gt_shape), anti_aliasing=True) for i in
                                 range(3553)])
         else:
-            gt_train = np.array([lodopab.get_sample(i, part='train', out=(False, True))[1][1:, 1:] for i in range(4000)])
-            gt_val = np.array([lodopab.get_sample(i, part='validation', out=(False, True))[1][1:, 1:] for i in range(400)])
+            gt_train = np.array(
+                [lodopab.get_sample(i, part='train', out=(False, True))[1][1:, 1:] for i in range(4000)])
+            gt_val = np.array(
+                [lodopab.get_sample(i, part='validation', out=(False, True))[1][1:, 1:] for i in range(400)])
             gt_test = np.array([lodopab.get_sample(i, part='test', out=(False, True))[1][1:, 1:] for i in range(3553)])
-
-
 
         gt_train = torch.from_numpy(gt_train)
         gt_val = torch.from_numpy(gt_val)
@@ -206,6 +209,147 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(gt_train, gt_val, gt_test),
             num_angles=self.num_angles, im_shape=450, impl='astra_cpu', inner_circle=self.inner_circle)
+
+        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+                                                 img_shape=self.gt_shape)
+        self.mag_min = tmp_fcds.mag_min
+        self.mag_max = tmp_fcds.mag_max
+
+    def train_dataloader(self, *args, **kwargs) -> DataLoader:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+                                          img_shape=self.gt_shape),
+            batch_size=self.batch_size, num_workers=2)
+
+    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
+                                          img_shape=self.gt_shape),
+            batch_size=self.batch_size, num_workers=2)
+
+    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+                                          img_shape=self.gt_shape),
+            batch_size=1)
+
+
+class KanjiFourierTargetDataModule(LightningDataModule):
+    IMG_SHAPE = 63
+
+    def __init__(self, root_dir, batch_size, num_angles=33):
+        """
+        :param root_dir:
+        :param batch_size:
+        :param num_angles:
+        """
+        super().__init__()
+        self.root_dir = root_dir
+        self.batch_size = batch_size
+        self.num_angles = num_angles
+        self.inner_circle = True
+        self.gt_ds = None
+        self.mean = None
+        self.std = None
+
+    def setup(self, stage: Optional[str] = None):
+        gt_data = np.load(join(self.root_dir, 'gt_data.npz'))
+
+        gt_train = torch.from_numpy(gt_data['gt_train'])
+        gt_val = torch.from_numpy(gt_data['gt_val'])
+        gt_test = torch.from_numpy(gt_data['gt_test'])
+
+        x, y = torch.meshgrid(torch.arange(-self.IMG_SHAPE // 2 + 1,
+                                           self.IMG_SHAPE // 2 + 1),
+                              torch.arange(-self.IMG_SHAPE // 2 + 1,
+                                           self.IMG_SHAPE // 2 + 1))
+        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.IMG_SHAPE // 2
+        gt_train *= circle
+        gt_val *= circle
+        gt_test *= circle
+
+        self.mean = gt_train.mean()
+        self.std = gt_train.std()
+
+        gt_train = normalize(gt_train, self.mean, self.std)
+        gt_val = normalize(gt_val, self.mean, self.std)
+        gt_test = normalize(gt_test, self.mean, self.std)
+
+        self.gt_ds = get_projection_dataset(
+            GroundTruthDataset(gt_train, gt_val, gt_test),
+            num_angles=self.num_angles, im_shape=133, impl='astra_cpu', inner_circle=self.inner_circle)
+
+        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+                                                 img_shape=self.IMG_SHAPE)
+        self.mag_min = tmp_fcds.mag_min
+        self.mag_max = tmp_fcds.mag_max
+
+    def train_dataloader(self, *args, **kwargs) -> DataLoader:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+                                          img_shape=self.IMG_SHAPE),
+            batch_size=self.batch_size, num_workers=2)
+
+    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
+                                          img_shape=self.IMG_SHAPE),
+            batch_size=self.batch_size, num_workers=2)
+
+    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+                                          img_shape=self.IMG_SHAPE),
+            batch_size=1)
+
+
+class CelebAFourierTargetDataModule(LightningDataModule):
+    IMG_SHAPE = 127
+
+    def __init__(self, root_dir, batch_size, num_angles=33):
+        """
+        :param root_dir:
+        :param batch_size:
+        :param num_angles:
+        """
+        super().__init__()
+        self.root_dir = root_dir
+        self.batch_size = batch_size
+        self.gt_shape = 63
+        self.num_angles = num_angles
+        self.inner_circle = True
+        self.gt_ds = None
+        self.mean = None
+        self.std = None
+
+    def setup(self, stage: Optional[str] = None):
+        gt_data = np.load(join(self.root_dir, 'gt_data.npz'))
+
+        gt_train = torch.from_numpy(gt_data['gt_train'])
+        gt_val = torch.from_numpy(gt_data['gt_val'])
+        gt_test = torch.from_numpy(gt_data['gt_test'])
+
+        assert gt_train.shape[1] == self.gt_shape
+        assert gt_train.shape[2] == self.gt_shape
+        x, y = torch.meshgrid(torch.arange(-self.gt_shape // 2 + 1,
+                                           self.gt_shape // 2 + 1),
+                              torch.arange(-self.gt_shape // 2 + 1,
+                                           self.gt_shape // 2 + 1))
+        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
+        gt_train *= circle
+        gt_val *= circle
+        gt_test *= circle
+
+        self.mean = gt_train.mean()
+        self.std = gt_train.std()
+
+        gt_train = normalize(gt_train, self.mean, self.std)
+        gt_val = normalize(gt_val, self.mean, self.std)
+        gt_test = normalize(gt_test, self.mean, self.std)
+
+        self.gt_ds = get_projection_dataset(
+            GroundTruthDataset(gt_train, gt_val, gt_test),
+            num_angles=self.num_angles, im_shape=153, impl='astra_cpu', inner_circle=self.inner_circle)
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
                                                  img_shape=self.gt_shape)

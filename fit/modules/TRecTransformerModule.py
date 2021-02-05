@@ -18,7 +18,7 @@ from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, src_flatten_coords,
                  dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27, init_bin_factor=4,
-                 alpha=1.5, bin_factor_cd=10,
+                 bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
                  attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
@@ -26,7 +26,6 @@ class TRecTransformerModule(LightningModule):
 
         self.save_hyperparameters("d_model",
                                   "img_shape",
-                                  "alpha",
                                   "bin_factor_cd",
                                   "init_bin_factor",
                                   "detector_len",
@@ -56,6 +55,8 @@ class TRecTransformerModule(LightningModule):
         self.dft_shape = (img_shape, img_shape // 2 + 1)
         self.bin_factor = init_bin_factor
         self.bin_count = 0
+        self.best_mean_val_mse = 9999999
+        self.bin_factor_patience = 10
         self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
 
         self.trec = TRecTransformer(d_model=self.hparams.d_model,
@@ -220,6 +221,9 @@ class TRecTransformerModule(LightningModule):
             self.trainer.logger.experiment.add_image('targets/img_{}'.format(i), y_img.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
 
+    def _is_better(self, mean_val_mse):
+        return mean_val_mse < self.best_mean_val_mse * (1. - 0.0001)
+
     def validation_epoch_end(self, outputs):
         val_loss = [o['val_loss'] for o in outputs]
         val_mse = [o['val_mse'] for o in outputs]
@@ -230,8 +234,19 @@ class TRecTransformerModule(LightningModule):
         mean_val_mse = torch.mean(torch.stack(val_mse))
         mean_val_psnr = torch.mean(torch.stack(val_psnr))
         bin_factor_threshold = torch.mean(torch.stack(bin_mse)) * self.bin_factor
-        if self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < bin_factor_threshold and self.bin_factor > 1:
+
+        if self._is_better(mean_val_mse):
+            self.best_mean_val_mse = mean_val_mse
+            self.bin_factor_patience = 10
+        else:
+            self.bin_factor_patience -= 1
+
+        reduce_bin_factor = (self.bin_factor_patience < 1) or (
+                self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < bin_factor_threshold)
+        if reduce_bin_factor and self.bin_factor > 1:
             self.bin_count = 0
+            self.bin_factor_patience = 10
+            self.best_mean_val_mse = mean_val_mse
             self.bin_factor = max(1, self.bin_factor // 2)
             self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
             print('Reduced bin_factor to {}.'.format(self.bin_factor))
@@ -240,6 +255,9 @@ class TRecTransformerModule(LightningModule):
             self.trainer.lr_schedulers[0]['scheduler']._reset()
 
         self.bin_count += 1
+
+        if self.bin_factor > 1:
+            self.trainer.lr_schedulers[0]['scheduler']._reset()
 
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
         self.log('Train/avg_val_mse', mean_val_mse, logger=True, on_epoch=True)
