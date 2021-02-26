@@ -59,13 +59,13 @@ class TRecTransformer(torch.nn.Module):
         )
 
         self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, d_query, kernel_size=3, stride=1, padding=1),
+            torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_query),
-            torch.nn.Conv2d(d_query, d_query, kernel_size=3, stride=1, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_query),
-            torch.nn.Conv2d(d_query, 1, kernel_size=1, stride=1, padding=0)
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
         )
 
     def forward(self, x, out_pos_emb, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
