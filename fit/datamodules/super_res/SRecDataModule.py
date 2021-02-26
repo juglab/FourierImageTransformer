@@ -65,13 +65,13 @@ class MNISTSResFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
@@ -122,13 +122,13 @@ class CelebASResFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(

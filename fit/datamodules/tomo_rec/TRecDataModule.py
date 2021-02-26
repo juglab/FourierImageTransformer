@@ -131,13 +131,13 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
@@ -219,13 +219,13 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
@@ -288,13 +288,13 @@ class KanjiFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
@@ -360,13 +360,13 @@ class CelebAFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
