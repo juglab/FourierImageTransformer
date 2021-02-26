@@ -35,7 +35,7 @@ class SResTransformerModule(LightningModule):
         self.dft_shape = (img_shape, img_shape // 2 + 1)
 
         self.sres = SResTransformer(d_model=self.hparams.d_model,
-                                    y_coords_img=self.y_coords_img, x_coords_img=self.x_coords_img,
+                                    y_coords_img=self.y_coords_img, x_coords_img=self.x_coords_img, flatten_order=self.dst_flatten_coords,
                                     attention_type='causal-linear',
                                     n_layers=self.hparams.n_layers,
                                     n_heads=self.hparams.n_heads,

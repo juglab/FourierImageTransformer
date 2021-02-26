@@ -11,11 +11,11 @@ class GroundTruthDataset(Dataset):
         self.val_gt_images = val_gt_images
         self.test_gt_images = test_gt_images
         assert self.train_gt_images.shape[1] == self.train_gt_images.shape[2], 'Train images are not square.'
-        assert self.train_gt_images.shape[1] % 2 == 1, 'Train image size has to be odd.'
+        # assert self.train_gt_images.shape[1] % 2 == 1, 'Train image size has to be odd.'
         assert self.val_gt_images.shape[1] == self.val_gt_images.shape[2], 'Val images are not square.'
-        assert self.val_gt_images.shape[1] % 2 == 1, 'Val image size has to be odd.'
+        # assert self.val_gt_images.shape[1] % 2 == 1, 'Val image size has to be odd.'
         assert self.test_gt_images.shape[1] == self.test_gt_images.shape[2], 'Test images are not square.'
-        assert self.test_gt_images.shape[1] % 2 == 1, 'Test image size has to be odd.'
+        # assert self.test_gt_images.shape[1] % 2 == 1, 'Test image size has to be odd.'
 
         self.shape = (self.train_gt_images.shape[1], self.train_gt_images.shape[2])
         if inner_circle:

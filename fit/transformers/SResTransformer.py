@@ -8,7 +8,7 @@ from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
 class SResTransformer(torch.nn.Module):
     def __init__(self,
                  d_model,
-                 y_coords_img, x_coords_img,
+                 y_coords_img, x_coords_img, flatten_order,
                  attention_type="linear",
                  n_layers=4,
                  n_heads=4,
@@ -23,6 +23,7 @@ class SResTransformer(torch.nn.Module):
             d_model // 2,
             y_coords_img,
             x_coords_img,
+            flatten_order=flatten_order,
             persistent=False
         )
 
