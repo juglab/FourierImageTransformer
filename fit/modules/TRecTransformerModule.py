@@ -60,8 +60,8 @@ class TRecTransformerModule(LightningModule):
         self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
 
         self.trec = TRecTransformer(d_model=self.hparams.d_model,
-                                    y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
-                                    y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                    y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj, flatten_proj=self.src_flatten_coords,
+                                    y_coords_img=y_coords_img, x_coords_img=x_coords_img, flatten_img=self.dst_flatten_coords,
                                     attention_type=self.hparams.attention_type,
                                     n_layers=self.hparams.n_layers,
                                     n_heads=self.hparams.n_heads,
@@ -119,7 +119,7 @@ class TRecTransformerModule(LightningModule):
         num_target_fcs = np.sum(self.dst_order <= shells)
 
         x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
-        out_pos_emb = self.trec.pos_embedding_target.pe[:, :num_target_fcs]
+        out_pos_emb = self.trec.decoder_input[:, :num_target_fcs]
         y_fc_ = y_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
 
         return x_fc_, out_pos_emb, y_fc_

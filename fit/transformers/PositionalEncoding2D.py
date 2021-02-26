@@ -3,13 +3,14 @@ import torch
 
 
 class PositionalEncoding2D(torch.nn.Module):
-    def __init__(self, d_model, y_coords, x_coords, dropout=0.0, persistent=False):
+    def __init__(self, d_model, y_coords, x_coords, flatten_order, dropout=0.0, persistent=False):
         super(PositionalEncoding2D, self).__init__()
         self.dropout = torch.nn.Dropout(p=dropout)
         self.d_model = d_model
 
         pe = self.positional_encoding_2D(self.d_model, y_coords, x_coords)
-        pe = pe.reshape(-1, pe.shape[0]).unsqueeze(0)
+        pe = torch.movedim(pe, 0, -1).unsqueeze(0)
+        pe = pe[:, flatten_order]
 
         self.register_buffer('pe', pe, persistent=persistent)
 
