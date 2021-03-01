@@ -150,7 +150,8 @@ class SResTransformerModule(LightningModule):
             weights = torch.load(path)
             sd = {}
             for k in weights['state_dict'].keys():
-                sd[k[5:]] = weights['state_dict'][k]
+                if k[:5] == 'sres.':
+                    sd[k[5:]] = weights['state_dict'][k]
             self.sres_pred.load_state_dict(sd)
 
         self.sres_pred.to(self.device)
