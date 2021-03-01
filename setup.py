@@ -47,7 +47,7 @@ setup(name='fourier-image-transformers',
           "tifffile",
           "tqdm",
           "pytorch-fast-transformers",
-          "dival",
+          "dival<0.6.0",
           "pytorch-lightning",
           "jupyter"
       ]

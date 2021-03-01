@@ -9,8 +9,8 @@ from torch.nn import functional as F
 class TRecTransformer(torch.nn.Module):
     def __init__(self,
                  d_model,
-                 y_coords_proj, x_coords_proj,
-                 y_coords_img, x_coords_img,
+                 y_coords_proj, x_coords_proj, flatten_proj,
+                 y_coords_img, x_coords_img, flatten_img,
                  attention_type="linear",
                  n_layers=4,
                  n_heads=4,
@@ -25,6 +25,7 @@ class TRecTransformer(torch.nn.Module):
             d_model // 2,
             y_coords_proj,
             x_coords_proj,
+            flatten_order=flatten_proj,
             persistent=False
         )
 
@@ -39,8 +40,9 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.pos_embedding_target = PositionalEncoding2D(d_model, y_coords_img, x_coords_img)
-
+        self.pos_embedding_target = PositionalEncoding2D(d_model // 2, y_coords_img, x_coords_img, flatten_order=flatten_img)
+        decoder_input = torch.cat([torch.rand(self.pos_embedding_target.pe.shape), self.pos_embedding_target.pe], dim=2)
+        self.register_buffer('decoder_input', decoder_input, persistent=True)
         self.decoder = TransformerDecoderBuilder.from_kwargs(
             self_attention_type=attention_type,
             cross_attention_type=attention_type,
@@ -59,13 +61,13 @@ class TRecTransformer(torch.nn.Module):
         )
 
         self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, d_query, kernel_size=3, stride=1, padding=1),
+            torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_query),
-            torch.nn.Conv2d(d_query, d_query, kernel_size=3, stride=1, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_query),
-            torch.nn.Conv2d(d_query, 1, kernel_size=1, stride=1, padding=0)
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
         )
 
     def forward(self, x, out_pos_emb, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):

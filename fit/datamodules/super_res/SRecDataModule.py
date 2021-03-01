@@ -16,7 +16,7 @@ from fit.utils.utils import normalize
 
 
 class MNISTSResFourierTargetDataModule(LightningDataModule):
-    IMG_SHAPE = 27
+    IMG_SHAPE = 28
 
     def __init__(self, root_dir, batch_size):
         """
@@ -38,9 +38,8 @@ class MNISTSResFourierTargetDataModule(LightningDataModule):
         mnist_train_val = MNIST(self.root_dir, train=True, download=True).data.type(torch.float32)
         np.random.seed(1612)
         perm = np.random.permutation(mnist_train_val.shape[0])
-        mnist_train = mnist_train_val[perm[:55000], 1:, 1:]
-        mnist_val = mnist_train_val[perm[55000:], 1:, 1:]
-        mnist_test = mnist_test[:, 1:, 1:]
+        mnist_train = mnist_train_val[perm[:55000]]
+        mnist_val = mnist_train_val[perm[55000:]]
 
         assert mnist_train.shape[1] == MNISTSResFourierTargetDataModule.IMG_SHAPE
         assert mnist_train.shape[2] == MNISTSResFourierTargetDataModule.IMG_SHAPE
@@ -66,13 +65,13 @@ class MNISTSResFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
@@ -123,13 +122,13 @@ class CelebASResFourierTargetDataModule(LightningDataModule):
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
                                           img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=2)
+            batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(

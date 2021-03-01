@@ -60,8 +60,8 @@ class TRecTransformerModule(LightningModule):
         self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
 
         self.trec = TRecTransformer(d_model=self.hparams.d_model,
-                                    y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
-                                    y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                    y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj, flatten_proj=self.src_flatten_coords,
+                                    y_coords_img=y_coords_img, x_coords_img=x_coords_img, flatten_img=self.dst_flatten_coords,
                                     attention_type=self.hparams.attention_type,
                                     n_layers=self.hparams.n_layers,
                                     n_heads=self.hparams.n_heads,
@@ -90,7 +90,9 @@ class TRecTransformerModule(LightningModule):
     def _real_loss(self, pred_img, target_fc, mag_min, mag_max):
         dft_target = convert_to_dft(fc=target_fc, mag_min=mag_min, mag_max=mag_max,
                                     dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
-        dft_target *= self.mask
+        if self.bin_factor > 1:
+            dft_target *= self.mask
+
         y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
                               2 * (self.hparams.img_shape // 2,), (1, 2))
         return F.mse_loss(pred_img, y_target)
@@ -116,10 +118,14 @@ class TRecTransformerModule(LightningModule):
     def _bin_data(self, x_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
         num_sino_fcs = np.clip(self.num_angles * int(shells + 1), 1, x_fc.shape[1])
-        num_target_fcs = np.sum(self.dst_order <= shells)
+
+        if self.bin_factor > 1:
+            num_target_fcs = np.sum(self.dst_order <= shells)
+        else:
+            num_target_fcs = self.trec.decoder_input.shape[1]
 
         x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
-        out_pos_emb = self.trec.pos_embedding_target.pe[:, :num_target_fcs]
+        out_pos_emb = self.trec.decoder_input[:, :num_target_fcs]
         y_fc_ = y_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
 
         return x_fc_, out_pos_emb, y_fc_
