@@ -19,7 +19,7 @@ class SResTransformerTrain(torch.nn.Module):
 
         self.fourier_coefficient_embedding = torch.nn.Linear(2, d_model // 2)
 
-        self.pos_embedding_input_projections = PositionalEncoding2D(
+        self.pos_embedding = PositionalEncoding2D(
             d_model // 2,
             y_coords_img,
             x_coords_img,
@@ -45,7 +45,7 @@ class SResTransformerTrain(torch.nn.Module):
 
     def forward(self, x):
         x = self.fourier_coefficient_embedding(x)
-        x = self.pos_embedding_input_projections(x)
+        x = self.pos_embedding(x)
         triangular_mask = TriangularCausalMask(x.shape[1], device=x.device)
         y_hat = self.encoder(x, attn_mask=triangular_mask)
         y_hat = self.predictor(y_hat)
