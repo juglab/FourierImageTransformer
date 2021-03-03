@@ -285,10 +285,6 @@ class CropLoDoPaBFourierTargetDataModule(LightningDataModule):
                                            self.gt_shape // 2 + 1),
                               torch.arange(-self.gt_shape // 2 + 1,
                                            self.gt_shape // 2 + 1))
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
-        gt_train *= circle
-        gt_val *= circle
-        gt_test *= circle
 
         self.mean = gt_train.mean()
         self.std = gt_train.std()
@@ -296,6 +292,11 @@ class CropLoDoPaBFourierTargetDataModule(LightningDataModule):
         gt_train = normalize(gt_train, self.mean, self.std)
         gt_val = normalize(gt_val, self.mean, self.std)
         gt_test = normalize(gt_test, self.mean, self.std)
+
+        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
+        gt_train *= circle
+        gt_val *= circle
+        gt_test *= circle
 
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(gt_train, gt_val, gt_test),
