@@ -1,6 +1,7 @@
 import torch
 from fast_transformers.builders import TransformerEncoderBuilder, RecurrentEncoderBuilder
 from fast_transformers.masking import TriangularCausalMask
+from torch.nn import functional as F
 
 from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
 
@@ -38,9 +39,13 @@ class SResTransformerTrain(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.predictor = torch.nn.Linear(
+        self.predictor_amp = torch.nn.Linear(
             n_heads * d_query,
-            2
+            1
+        )
+        self.predictor_phase = torch.nn.Linear(
+            n_heads * d_query,
+            1
         )
 
     def forward(self, x):
@@ -48,9 +53,9 @@ class SResTransformerTrain(torch.nn.Module):
         x = self.pos_embedding(x)
         triangular_mask = TriangularCausalMask(x.shape[1], device=x.device)
         y_hat = self.encoder(x, attn_mask=triangular_mask)
-        y_hat = self.predictor(y_hat)
-
-        return y_hat
+        y_amp = self.predictor_amp(y_hat)
+        y_phase = F.tanh(self.predictor_phase(y_hat))
+        return torch.cat([y_amp, y_phase], dim=-1)
 
 
 class SResTransformerPredict(torch.nn.Module):
@@ -82,9 +87,13 @@ class SResTransformerPredict(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.predictor = torch.nn.Linear(
-            d_model,
-            2
+        self.predictor_amp = torch.nn.Linear(
+            n_heads * d_query,
+            1
+        )
+        self.predictor_phase = torch.nn.Linear(
+            n_heads * d_query,
+            1
         )
 
     def forward(self, x, i=0, memory=None):
@@ -92,6 +101,6 @@ class SResTransformerPredict(torch.nn.Module):
         x = self.fourier_coefficient_embedding(x)
         x = self.pos_embedding.forward_i(x, i)
         y_hat, memory = self.encoder(x, memory)
-        y_hat = self.predictor(y_hat)
-
-        return y_hat, memory
+        y_amp = self.predictor_amp(y_hat)
+        y_phase = F.tanh(self.predictor_phase(y_hat))
+        return torch.cat([y_amp, y_phase], dim=-1), memory
