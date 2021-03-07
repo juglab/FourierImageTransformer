@@ -10,9 +10,7 @@ def convert2FC(x, mag_min, mag_max):
 
 
 def denormalize_phi(phi):
-    phi = (phi + 1) / 2.
-    phi = phi * 2 * np.pi
-    return phi
+    return phi * np.pi
 
 
 def denormalize_amp(amp, mag_min, mag_max):

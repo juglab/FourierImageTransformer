@@ -43,8 +43,8 @@ class TRecFourierCoefficientDataset(Dataset):
         sino_mag = 2 * (sino_mag - self.mag_min) / (self.mag_max - self.mag_min) - 1
         img_mag = 2 * (img_mag - self.mag_min) / (self.mag_max - self.mag_min) - 1
 
-        sino_phi = 2 * sino_phi / (2 * np.pi) - 1
-        img_phi = 2 * img_phi / (2 * np.pi) - 1
+        sino_phi = sino_phi / np.pi
+        img_phi = img_phi / np.pi
 
         sino_fft = torch.stack([sino_mag.flatten(), sino_phi.flatten()], dim=-1)
         img_fft = torch.stack([img_mag.flatten(), img_phi.flatten()], dim=-1)
