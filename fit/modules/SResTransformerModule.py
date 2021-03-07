@@ -71,9 +71,9 @@ class SResTransformerModule(LightningModule):
         pred_phi = denormalize_phi(pred_fc[..., 1])
         target_phi = denormalize_phi(target_fc[..., 1])
 
-        amp_loss = 1 + torch.pow(pred_amp - target_amp, 2)
-        phi_loss = 2 - torch.cos(pred_phi - target_phi)
-        return torch.mean(amp_loss * phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
+        amp_loss = 0 + torch.pow(pred_amp - target_amp, 2)
+        phi_loss = 1 - torch.cos(pred_phi - target_phi)
+        return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
     def criterion(self, pred_fc, target_fc, mag_min, mag_max):
         fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
