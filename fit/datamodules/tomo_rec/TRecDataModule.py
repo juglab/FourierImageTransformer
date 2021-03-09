@@ -212,7 +212,7 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
             inner_circle=self.inner_circle)
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
-                                                 img_shape=self.gt_shape)
+                                                 img_shape=self.gt_shape, inner_circle=self.inner_circle)
         self.mag_min = tmp_fcds.mag_min
         self.mag_max = tmp_fcds.mag_max
 

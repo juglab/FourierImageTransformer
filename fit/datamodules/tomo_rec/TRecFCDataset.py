@@ -6,9 +6,10 @@ from torch.utils.data import Dataset
 
 
 class TRecFourierCoefficientDataset(Dataset):
-    def __init__(self, ds, mag_min, mag_max, part='train', img_shape=42):
+    def __init__(self, ds, mag_min, mag_max, part='train', img_shape=42, inner_circle=True):
         self.ds = ds.create_torch_dataset(part=part)
         self.img_shape = img_shape
+        self.inner_circle = inner_circle
         self.angles = ds.ray_trafo.geometry.angles
         if mag_min == None and mag_max == None:
             tmp_sinos = []
@@ -29,8 +30,8 @@ class TRecFourierCoefficientDataset(Dataset):
     def __getitem__(self, item):
         sino, img = self.ds[item]
         fbp = torch.from_numpy(
-            np.array(iradon(sino.numpy().T, theta=np.rad2deg(-self.angles), circle=self.ds.inner_circle,
-                            output_size=self.img_shape).T))
+            np.array(iradon(sino.numpy().T, theta=np.rad2deg(-self.angles), circle=self.inner_circle,
+                            output_size=self.img_shape).astype(np.float32).T))
         sino_fft = torch.fft.rfftn(torch.roll(sino, sino.shape[1] // 2 + 1, 1), dim=[-1])
         fbp_fft = torch.fft.rfftn(torch.roll(fbp, 2 * (img.shape[0] // 2 + 1,), (0, 1)), dim=[0, 1])
         img_fft = torch.fft.rfftn(torch.roll(img, 2 * (img.shape[0] // 2 + 1,), (0, 1)), dim=[0, 1])

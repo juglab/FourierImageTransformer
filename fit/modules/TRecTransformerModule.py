@@ -70,8 +70,8 @@ class TRecTransformerModule(LightningModule):
         else:
             self.loss = _fc_sum_loss
 
-        if self.hparams.use_fbp:
-            self.random_cond = torch.rand(1, self.dst_flatten_coords.shape[0], 2)
+        if not self.hparams.use_fbp:
+            self.register_buffer('random_cond', torch.rand(1, self.dst_flatten_coords.shape[0], 2))
         else:
             self.random_cond = None
 
@@ -125,6 +125,7 @@ class TRecTransformerModule(LightningModule):
         amp_loss = 0 + torch.pow(pred_amp - target_amp, 2)
         phi_loss = 1 - torch.cos(pred_phi - target_phi)
         return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
+
     def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
         fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
                                                 mag_max=mag_max)
@@ -139,13 +140,13 @@ class TRecTransformerModule(LightningModule):
         if self.bin_factor > 1:
             num_target_fcs = np.sum(self.dst_order <= shells)
         else:
-            num_target_fcs = self.trec.decoder_input.shape[1]
+            num_target_fcs = fbp_fc.shape[1]
 
         x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
-        if self.use_fbp:
+        if self.hparams.use_fbp:
             fbp_fc_ = fbp_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
         else:
-            fbp_fc_ = self.random_cond[self.dst_flatten_coords][:num_target_fcs]
+            fbp_fc_ = self.random_cond[:, self.dst_flatten_coords][:, :num_target_fcs]
             fbp_fc_ = torch.repeat_interleave(fbp_fc_, x_fc.shape[0], dim=0)
 
         y_fc_ = y_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
@@ -209,40 +210,36 @@ class TRecTransformerModule(LightningModule):
         self.log_dict({'val_psnr': val_psnr})
         self.log_dict({'bin_mse': bin_mse})
         if batch_idx == 0:
-            self.log_val_images(pred_img, x_fc, y_fc_, y_real, mag_min, mag_max)
+            self.log_val_images(pred_img, fbp_fc[:, self.dst_flatten_coords], y_fc_, y_real, mag_min, mag_max)
         return {'val_loss': val_loss, 'val_mse': val_mse, 'val_psnr': val_psnr, 'bin_mse': bin_mse,
                 'amp_loss': amp_loss,
                 'phi_loss': phi_loss}
 
-    def log_val_images(self, pred_img, x, y_fc, y_real, mag_min, mag_max):
-        x_fc = convert2FC(x, mag_min, mag_max)
+    def log_val_images(self, pred_img, fbp_fc, y_fc, y_real, mag_min, mag_max):
+        dft_fbp = convert_to_dft(fc=fbp_fc, mag_min=mag_min, mag_max=mag_max,
+                                 dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
         dft_target = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
                                     dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
 
         for i in range(min(3, len(pred_img))):
-            x_dft = fft_interpolate(self.x_coords_proj.cpu().numpy(), self.y_coords_proj.cpu().numpy(),
-                                    self.x_coords_img.cpu().numpy(), self.y_coords_img.cpu().numpy(),
-                                    x_fc[i][self.src_flatten_coords].cpu().numpy(),
-                                    dst_flatten_order=self.dst_flatten_coords,
-                                    target_shape=self.dft_shape)
 
             if self.bin_factor == 1:
-                x_img = torch.roll(torch.fft.irfftn(torch.from_numpy(x_dft), s=2 * (self.hparams.img_shape,)),
-                                   2 * (self.hparams.img_shape // 2,), (0, 1))
+                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i], s=2 * (self.hparams.img_shape,)),
+                           2 * (self.hparams.img_shape // 2,), (0, 1))
                 y_img = y_real[i]
             else:
-                x_img = torch.roll(torch.fft.irfftn(self.mask * torch.from_numpy(x_dft).to(pred_img.device),
+                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i],
                                                     s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
                 y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
 
-            x_img = torch.clamp((x_img - x_img.min()) / (x_img.max() - x_img.min()), 0, 1)
+            fbp_img = torch.clamp((fbp_img - fbp_img.min()) / (fbp_img.max() - fbp_img.min()), 0, 1)
             pred_img_ = pred_img[i]
             pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) / (pred_img_.max() - pred_img_.min()), 0, 1)
             y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
 
-            self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), x_img.unsqueeze(0),
+            self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), fbp_img.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
             self.trainer.logger.experiment.add_image('predcitions/img_{}'.format(i), pred_img_.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
