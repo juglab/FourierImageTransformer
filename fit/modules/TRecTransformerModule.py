@@ -3,6 +3,7 @@ from pytorch_lightning import LightningModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
+from fit.modules.loss import _fc_prod_loss, _fc_sum_loss
 from fit.transformers.TRecTransformer import TRecTransformer
 from fit.utils import convert2FC, fft_interpolate, PSNR, convert_to_dft, psfft
 from fit.utils.RAdam import RAdam
@@ -18,6 +19,7 @@ from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, src_flatten_coords,
                  dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27, init_bin_factor=4,
+                 loss='prod',
                  bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
@@ -29,6 +31,7 @@ class TRecTransformerModule(LightningModule):
                                   "bin_factor_cd",
                                   "init_bin_factor",
                                   "detector_len",
+                                  "loss",
                                   "lr",
                                   "weight_decay",
                                   "attention_type",
@@ -58,6 +61,11 @@ class TRecTransformerModule(LightningModule):
         self.best_mean_val_mse = 9999999
         self.bin_factor_patience = 10
         self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
+
+        if loss == 'prod':
+            self.loss = _fc_prod_loss
+        else:
+            self.loss = _fc_sum_loss
 
         self.trec = TRecTransformer(d_model=self.hparams.d_model,
                                     y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj, flatten_proj=self.src_flatten_coords,
@@ -107,10 +115,9 @@ class TRecTransformerModule(LightningModule):
         amp_loss = 0 + torch.pow(pred_amp - target_amp, 2)
         phi_loss = 1 - torch.cos(pred_phi - target_phi)
         return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
-
     def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
-        fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
-                                                    mag_max=mag_max)
+        fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
+                                                mag_max=mag_max)
         real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
                                     mag_max=mag_max)
         return fc_loss + real_loss, amp_loss, phi_loss
