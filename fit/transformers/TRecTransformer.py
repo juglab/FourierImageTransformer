@@ -55,9 +55,13 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.predictor = torch.nn.Linear(
+        self.predictor_amp = torch.nn.Linear(
             n_heads * d_query,
-            2
+            1
+        )
+        self.predictor_phase = torch.nn.Linear(
+            n_heads * d_query,
+            1
         )
 
         self.conv_block = torch.nn.Sequential(
@@ -77,7 +81,9 @@ class TRecTransformer(torch.nn.Module):
 
         output = torch.repeat_interleave(out_pos_emb, z.shape[0], dim=0)
         y_hat = self.decoder(output, z)
-        y_hat = self.predictor(y_hat)
+        y_amp = self.predictor_amp(y_hat)
+        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
         dft_hat = convert_to_dft(y_hat, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
                                   img_shape=img_shape)
