@@ -18,7 +18,8 @@ class GroundTruthDataset(Dataset):
         # assert self.test_gt_images.shape[1] % 2 == 1, 'Test image size has to be odd.'
 
         self.shape = (self.train_gt_images.shape[1], self.train_gt_images.shape[2])
-        if inner_circle:
+        self.inner_circle = inner_circle
+        if self.inner_circle:
             circ_space = np.sqrt((self.shape[0]/2.)**2 /2.)
             min_pt = [-circ_space, -circ_space]
             max_pt = [circ_space, circ_space]
