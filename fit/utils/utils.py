@@ -53,7 +53,7 @@ def psf_real(r, pixel_res=32):
 
 
 def psfft(r, pixel_res=32):
-    return torch.fft.rfftn(psf_real(r, pixel_res))
+    return torch.fft.rfftn(psf_real(r, pixel_res)).abs()
 
 
 def normalize_minmse(x, target):
