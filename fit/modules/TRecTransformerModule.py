@@ -4,7 +4,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
 from fit.modules.loss import _fc_prod_loss, _fc_sum_loss
-from fit.transformers.TRecTransformer import TRecTransformer
+from fit.transformers.TRecTransformer import TRecTransformer, TRecEncoder
 from fit.utils import convert2FC, fft_interpolate, PSNR, convert_to_dft, psfft
 from fit.utils.RAdam import RAdam
 
@@ -25,7 +25,8 @@ class TRecTransformerModule(LightningModule):
                  bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
-                 attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
+                 attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1,
+                 encoder_only=False):
         super().__init__()
 
         self.save_hyperparameters("d_model",
@@ -75,7 +76,8 @@ class TRecTransformerModule(LightningModule):
         else:
             self.random_cond = None
 
-        self.trec = TRecTransformer(d_model=self.hparams.d_model,
+        if encoder_only:
+            self.trec = TRecEncoder(d_model=self.hparams.d_model,
                                     y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
                                     flatten_proj=self.src_flatten_coords,
                                     y_coords_img=y_coords_img, x_coords_img=x_coords_img,
@@ -86,6 +88,18 @@ class TRecTransformerModule(LightningModule):
                                     d_query=self.hparams.d_query,
                                     dropout=self.hparams.dropout,
                                     attention_dropout=self.hparams.attention_dropout)
+        else:
+            self.trec = TRecTransformer(d_model=self.hparams.d_model,
+                                        y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
+                                        flatten_proj=self.src_flatten_coords,
+                                        y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                        flatten_img=self.dst_flatten_coords,
+                                        attention_type=self.hparams.attention_type,
+                                        n_layers=self.hparams.n_layers,
+                                        n_heads=self.hparams.n_heads,
+                                        d_query=self.hparams.d_query,
+                                        dropout=self.hparams.dropout,
+                                        attention_dropout=self.hparams.attention_dropout)
 
         x, y = torch.meshgrid(torch.arange(-self.hparams.img_shape // 2 + 1,
                                            self.hparams.img_shape // 2 + 1),
