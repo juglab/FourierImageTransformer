@@ -118,6 +118,11 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         mnist_train = normalize(mnist_train, self.mean, self.std)
         mnist_val = normalize(mnist_val, self.mean, self.std)
         mnist_test = normalize(mnist_test, self.mean, self.std)
+
+        mnist_train *= circle
+        mnist_val *= circle
+        mnist_test *= circle
+
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(mnist_train, mnist_val, mnist_test),
             num_angles=self.num_angles, im_shape=70, impl='astra_cpu', inner_circle=self.inner_circle)
@@ -195,9 +200,6 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
                               torch.arange(-self.gt_shape // 2 + 1,
                                            self.gt_shape // 2 + 1))
         circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
-        gt_train *= circle
-        gt_val *= circle
-        gt_test *= circle
 
         self.mean = gt_train.mean()
         self.std = gt_train.std()
@@ -205,6 +207,9 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
         gt_train = normalize(gt_train, self.mean, self.std)
         gt_val = normalize(gt_val, self.mean, self.std)
         gt_test = normalize(gt_test, self.mean, self.std)
+        gt_train *= circle
+        gt_val *= circle
+        gt_test *= circle
 
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(gt_train, gt_val, gt_test),
@@ -356,10 +361,6 @@ class KanjiFourierTargetDataModule(LightningDataModule):
                                            self.IMG_SHAPE // 2 + 1),
                               torch.arange(-self.IMG_SHAPE // 2 + 1,
                                            self.IMG_SHAPE // 2 + 1))
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.IMG_SHAPE // 2
-        gt_train *= circle
-        gt_val *= circle
-        gt_test *= circle
 
         self.mean = gt_train.mean()
         self.std = gt_train.std()
@@ -367,6 +368,11 @@ class KanjiFourierTargetDataModule(LightningDataModule):
         gt_train = normalize(gt_train, self.mean, self.std)
         gt_val = normalize(gt_val, self.mean, self.std)
         gt_test = normalize(gt_test, self.mean, self.std)
+
+        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.IMG_SHAPE // 2
+        gt_train *= circle
+        gt_val *= circle
+        gt_test *= circle
 
         self.gt_ds = get_projection_dataset(
             GroundTruthDataset(gt_train, gt_val, gt_test),
