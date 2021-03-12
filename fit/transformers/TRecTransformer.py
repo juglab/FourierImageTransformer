@@ -165,3 +165,37 @@ class TRecEncoder(torch.nn.Module):
 
         return y_hat, img_post[:, 0]
 
+class TRecConvBlock(torch.nn.Module):
+    def __init__(self,
+                 d_model,
+                 y_coords_proj, x_coords_proj, flatten_proj,
+                 y_coords_img, x_coords_img, flatten_img,
+                 attention_type="linear",
+                 n_layers=4,
+                 n_heads=4,
+                 d_query=32,
+                 dropout=0.1,
+                 attention_dropout=0.1):
+        super(TRecConvBlock, self).__init__()
+
+        self.conv_block = torch.nn.Sequential(
+            torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
+        )
+
+    def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
+        dft_hat = convert_to_dft(fbp, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
+                                 img_shape=img_shape)
+        dft_hat *= attenuation
+        img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
+                             2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
+        img_post = self.conv_block(img_hat)
+        img_post += img_hat
+
+        return fbp, img_post[:, 0]
+
