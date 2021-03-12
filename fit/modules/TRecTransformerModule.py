@@ -44,7 +44,8 @@ class TRecTransformerModule(LightningModule):
                                   "n_heads",
                                   "d_query",
                                   "dropout",
-                                  "attention_dropout")
+                                  "attention_dropout",
+                                  "convblock_only")
         self.y_coords_proj = y_coords_proj
         self.x_coords_proj = x_coords_proj
         self.y_coords_img = y_coords_img
@@ -155,11 +156,15 @@ class TRecTransformerModule(LightningModule):
         return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
     def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
-        fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
-                                                mag_max=mag_max)
-        real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
+        if self.hparams.convblock_only:
+            return self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
                                     mag_max=mag_max)
-        return fc_loss + real_loss, amp_loss, phi_loss
+        else:
+            fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
+                                                    mag_max=mag_max)
+            real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
+                                        mag_max=mag_max)
+            return fc_loss + real_loss, amp_loss, phi_loss
 
     def _bin_data(self, x_fc, fbp_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
