@@ -158,7 +158,7 @@ class TRecTransformerModule(LightningModule):
     def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
         if self.hparams.convblock_only:
             return self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
-                                    mag_max=mag_max)
+                                    mag_max=mag_max), 0.0, 0.0
         else:
             fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
                                                     mag_max=mag_max)
