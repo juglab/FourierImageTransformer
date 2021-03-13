@@ -28,7 +28,8 @@ class TRecTransformerModule(LightningModule):
                  attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1,
                  encoder_only=False,
                  convblock_only=False,
-                 no_convblock=False):
+                 no_convblock=False,
+                 d_conv=8):
         super().__init__()
 
         self.save_hyperparameters("d_model",
@@ -46,7 +47,8 @@ class TRecTransformerModule(LightningModule):
                                   "d_query",
                                   "dropout",
                                   "attention_dropout",
-                                  "convblock_only")
+                                  "convblock_only",
+                                  "d_conv")
         self.y_coords_proj = y_coords_proj
         self.x_coords_proj = x_coords_proj
         self.y_coords_img = y_coords_img
@@ -103,7 +105,8 @@ class TRecTransformerModule(LightningModule):
                                         n_heads=self.hparams.n_heads,
                                         d_query=self.hparams.d_query,
                                         dropout=self.hparams.dropout,
-                                        attention_dropout=self.hparams.attention_dropout)
+                                        attention_dropout=self.hparams.attention_dropout,
+                                          d_conv=d_conv)
             else:
                 if encoder_only:
                     self.trec = TRecEncoder(d_model=self.hparams.d_model,
@@ -116,7 +119,8 @@ class TRecTransformerModule(LightningModule):
                                             n_heads=self.hparams.n_heads,
                                             d_query=self.hparams.d_query,
                                             dropout=self.hparams.dropout,
-                                            attention_dropout=self.hparams.attention_dropout)
+                                            attention_dropout=self.hparams.attention_dropout,
+                                          d_conv=d_conv)
                 else:
                     self.trec = TRecTransformer(d_model=self.hparams.d_model,
                                                 y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
@@ -128,7 +132,8 @@ class TRecTransformerModule(LightningModule):
                                                 n_heads=self.hparams.n_heads,
                                                 d_query=self.hparams.d_query,
                                                 dropout=self.hparams.dropout,
-                                                attention_dropout=self.hparams.attention_dropout)
+                                                attention_dropout=self.hparams.attention_dropout,
+                                          d_conv=d_conv)
 
         x, y = torch.meshgrid(torch.arange(-self.hparams.img_shape // 2 + 1,
                                            self.hparams.img_shape // 2 + 1),

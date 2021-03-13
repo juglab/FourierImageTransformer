@@ -16,7 +16,8 @@ class TRecTransformer(torch.nn.Module):
                  n_heads=4,
                  d_query=32,
                  dropout=0.1,
-                 attention_dropout=0.1):
+                 attention_dropout=0.1,
+                 d_conv=8):
         super(TRecTransformer, self).__init__()
 
         self.fourier_coefficient_embedding = torch.nn.Linear(2, d_model // 2)
@@ -67,13 +68,10 @@ class TRecTransformer(torch.nn.Module):
         )
 
         self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
+            torch.nn.BatchNorm2d(d_conv),
+            torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
         )
 
     def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
@@ -189,7 +187,8 @@ class TRecEncoder(torch.nn.Module):
                  n_heads=4,
                  d_query=32,
                  dropout=0.1,
-                 attention_dropout=0.1):
+                 attention_dropout=0.1,
+                 d_conv=8):
         super(TRecEncoder, self).__init__()
 
         self.fbp_fourier_coefficient_embedding = torch.nn.Linear(2, d_model // 2)
@@ -218,13 +217,10 @@ class TRecEncoder(torch.nn.Module):
         )
 
         self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
+            torch.nn.BatchNorm2d(d_conv),
+            torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
         )
 
     def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
@@ -255,17 +251,15 @@ class TRecConvBlock(torch.nn.Module):
                  n_heads=4,
                  d_query=32,
                  dropout=0.1,
-                 attention_dropout=0.1):
+                 attention_dropout=0.1,
+                 d_conv=8):
         super(TRecConvBlock, self).__init__()
 
         self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
+            torch.nn.BatchNorm2d(d_conv),
+            torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
         )
 
     def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
