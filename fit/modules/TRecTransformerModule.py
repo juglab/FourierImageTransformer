@@ -3,7 +3,8 @@ from pytorch_lightning import LightningModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
-from fit.transformers.TRecTransformer import TRecTransformer
+from fit.modules.loss import _fc_prod_loss, _fc_sum_loss
+from fit.transformers.TRecTransformer import TRecTransformer, TRecEncoder, TRecConvBlock, TRecEncDec
 from fit.utils import convert2FC, fft_interpolate, PSNR, convert_to_dft, psfft
 from fit.utils.RAdam import RAdam
 
@@ -17,11 +18,18 @@ from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, y_coords_proj, x_coords_proj, y_coords_img, x_coords_img, src_flatten_coords,
-                 dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27, init_bin_factor=4,
+                 dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27,
+                 loss='prod',
+                 use_fbp=True,
+                 init_bin_factor=4,
                  bin_factor_cd=10,
                  lr=0.0001,
                  weight_decay=0.01,
-                 attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
+                 attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1,
+                 encoder_only=False,
+                 convblock_only=False,
+                 no_convblock=False,
+                 d_conv=8):
         super().__init__()
 
         self.save_hyperparameters("d_model",
@@ -29,6 +37,8 @@ class TRecTransformerModule(LightningModule):
                                   "bin_factor_cd",
                                   "init_bin_factor",
                                   "detector_len",
+                                  "loss",
+                                  "use_fbp",
                                   "lr",
                                   "weight_decay",
                                   "attention_type",
@@ -36,7 +46,9 @@ class TRecTransformerModule(LightningModule):
                                   "n_heads",
                                   "d_query",
                                   "dropout",
-                                  "attention_dropout")
+                                  "attention_dropout",
+                                  "convblock_only",
+                                  "d_conv")
         self.y_coords_proj = y_coords_proj
         self.x_coords_proj = x_coords_proj
         self.y_coords_img = y_coords_img
@@ -59,15 +71,69 @@ class TRecTransformerModule(LightningModule):
         self.bin_factor_patience = 10
         self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
 
-        self.trec = TRecTransformer(d_model=self.hparams.d_model,
-                                    y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj, flatten_proj=self.src_flatten_coords,
-                                    y_coords_img=y_coords_img, x_coords_img=x_coords_img, flatten_img=self.dst_flatten_coords,
+        if loss == 'prod':
+            self.loss = _fc_prod_loss
+        else:
+            self.loss = _fc_sum_loss
+
+        if not self.hparams.use_fbp:
+            self.register_buffer('random_cond', torch.rand(1, self.dst_flatten_coords.shape[0], 2) * 0.0)
+        else:
+            self.random_cond = None
+
+        if no_convblock:
+            self.trec = TRecEncDec(d_model=self.hparams.d_model,
+                                    y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
+                                    flatten_proj=self.src_flatten_coords,
+                                    y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                    flatten_img=self.dst_flatten_coords,
                                     attention_type=self.hparams.attention_type,
                                     n_layers=self.hparams.n_layers,
                                     n_heads=self.hparams.n_heads,
                                     d_query=self.hparams.d_query,
                                     dropout=self.hparams.dropout,
                                     attention_dropout=self.hparams.attention_dropout)
+        else:
+            if convblock_only:
+                self.trec = TRecConvBlock(d_model=self.hparams.d_model,
+                                        y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
+                                        flatten_proj=self.src_flatten_coords,
+                                        y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                        flatten_img=self.dst_flatten_coords,
+                                        attention_type=self.hparams.attention_type,
+                                        n_layers=self.hparams.n_layers,
+                                        n_heads=self.hparams.n_heads,
+                                        d_query=self.hparams.d_query,
+                                        dropout=self.hparams.dropout,
+                                        attention_dropout=self.hparams.attention_dropout,
+                                          d_conv=d_conv)
+            else:
+                if encoder_only:
+                    self.trec = TRecEncoder(d_model=self.hparams.d_model,
+                                            y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
+                                            flatten_proj=self.src_flatten_coords,
+                                            y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                            flatten_img=self.dst_flatten_coords,
+                                            attention_type=self.hparams.attention_type,
+                                            n_layers=self.hparams.n_layers,
+                                            n_heads=self.hparams.n_heads,
+                                            d_query=self.hparams.d_query,
+                                            dropout=self.hparams.dropout,
+                                            attention_dropout=self.hparams.attention_dropout,
+                                          d_conv=d_conv)
+                else:
+                    self.trec = TRecTransformer(d_model=self.hparams.d_model,
+                                                y_coords_proj=y_coords_proj, x_coords_proj=x_coords_proj,
+                                                flatten_proj=self.src_flatten_coords,
+                                                y_coords_img=y_coords_img, x_coords_img=x_coords_img,
+                                                flatten_img=self.dst_flatten_coords,
+                                                attention_type=self.hparams.attention_type,
+                                                n_layers=self.hparams.n_layers,
+                                                n_heads=self.hparams.n_heads,
+                                                d_query=self.hparams.d_query,
+                                                dropout=self.hparams.dropout,
+                                                attention_dropout=self.hparams.attention_dropout,
+                                          d_conv=d_conv)
 
         x, y = torch.meshgrid(torch.arange(-self.hparams.img_shape // 2 + 1,
                                            self.hparams.img_shape // 2 + 1),
@@ -109,32 +175,41 @@ class TRecTransformerModule(LightningModule):
         return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
     def criterion(self, pred_fc, pred_img, target_fc, mag_min, mag_max):
-        fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
+        if self.hparams.convblock_only:
+            return self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
+                                    mag_max=mag_max), torch.tensor(0.0), torch.tensor(0.0)
+        else:
+            fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
                                                     mag_max=mag_max)
-        real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
-                                    mag_max=mag_max)
-        return fc_loss + real_loss, amp_loss, phi_loss
+            real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, mag_min=mag_min,
+                                        mag_max=mag_max)
+            return fc_loss + real_loss, amp_loss, phi_loss
 
-    def _bin_data(self, x_fc, y_fc):
+    def _bin_data(self, x_fc, fbp_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
         num_sino_fcs = np.clip(self.num_angles * int(shells + 1), 1, x_fc.shape[1])
 
         if self.bin_factor > 1:
             num_target_fcs = np.sum(self.dst_order <= shells)
         else:
-            num_target_fcs = self.trec.decoder_input.shape[1]
+            num_target_fcs = fbp_fc.shape[1]
 
         x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
-        out_pos_emb = self.trec.decoder_input[:, :num_target_fcs]
+        if self.hparams.use_fbp:
+            fbp_fc_ = fbp_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
+        else:
+            fbp_fc_ = self.random_cond[:, self.dst_flatten_coords][:, :num_target_fcs]
+            fbp_fc_ = torch.repeat_interleave(fbp_fc_, x_fc.shape[0], dim=0)
+
         y_fc_ = y_fc[:, self.dst_flatten_coords][:, :num_target_fcs]
 
-        return x_fc_, out_pos_emb, y_fc_
+        return x_fc_, fbp_fc_, y_fc_
 
     def training_step(self, batch, batch_idx):
-        x_fc, y_fc, y_real, (mag_min, mag_max) = batch
-        x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
+        x_fc, fbp_fc, y_fc, y_real, (mag_min, mag_max) = batch
+        x_fc_, fbp_fc_, y_fc_ = self._bin_data(x_fc, fbp_fc, y_fc)
 
-        pred_fc, pred_img = self.trec.forward(x_fc_, out_pos_emb, mag_min=mag_min, mag_max=mag_max,
+        pred_fc, pred_img = self.trec.forward(x_fc_, fbp_fc_, mag_min=mag_min, mag_max=mag_max,
                                               dst_flatten_coords=self.dst_flatten_coords,
                                               img_shape=self.hparams.img_shape,
                                               attenuation=self.mask)
@@ -170,9 +245,9 @@ class TRecTransformerModule(LightningModule):
         return torch.mean(torch.stack(psnrs))
 
     def validation_step(self, batch, batch_idx):
-        x_fc, y_fc, y_real, (mag_min, mag_max) = batch
-        x_fc_, out_pos_emb, y_fc_ = self._bin_data(x_fc, y_fc)
-        pred_fc, pred_img = self.trec.forward(x_fc_, out_pos_emb, mag_min=mag_min, mag_max=mag_max,
+        x_fc, fbp_fc, y_fc, y_real, (mag_min, mag_max) = batch
+        x_fc_, fbp_fc_, y_fc_ = self._bin_data(x_fc, fbp_fc, y_fc)
+        pred_fc, pred_img = self.trec.forward(x_fc_, fbp_fc_, mag_min=mag_min, mag_max=mag_max,
                                               dst_flatten_coords=self.dst_flatten_coords,
                                               img_shape=self.hparams.img_shape,
                                               attenuation=self.mask)
@@ -187,40 +262,36 @@ class TRecTransformerModule(LightningModule):
         self.log_dict({'val_psnr': val_psnr})
         self.log_dict({'bin_mse': bin_mse})
         if batch_idx == 0:
-            self.log_val_images(pred_img, x_fc, y_fc_, y_real, mag_min, mag_max)
+            self.log_val_images(pred_img, fbp_fc[:, self.dst_flatten_coords], y_fc_, y_real, mag_min, mag_max)
         return {'val_loss': val_loss, 'val_mse': val_mse, 'val_psnr': val_psnr, 'bin_mse': bin_mse,
                 'amp_loss': amp_loss,
                 'phi_loss': phi_loss}
 
-    def log_val_images(self, pred_img, x, y_fc, y_real, mag_min, mag_max):
-        x_fc = convert2FC(x, mag_min, mag_max)
+    def log_val_images(self, pred_img, fbp_fc, y_fc, y_real, mag_min, mag_max):
+        dft_fbp = convert_to_dft(fc=fbp_fc, mag_min=mag_min, mag_max=mag_max,
+                                 dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
         dft_target = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
                                     dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
 
         for i in range(min(3, len(pred_img))):
-            x_dft = fft_interpolate(self.x_coords_proj.cpu().numpy(), self.y_coords_proj.cpu().numpy(),
-                                    self.x_coords_img.cpu().numpy(), self.y_coords_img.cpu().numpy(),
-                                    x_fc[i][self.src_flatten_coords].cpu().numpy(),
-                                    dst_flatten_order=self.dst_flatten_coords,
-                                    target_shape=self.dft_shape)
 
             if self.bin_factor == 1:
-                x_img = torch.roll(torch.fft.irfftn(torch.from_numpy(x_dft), s=2 * (self.hparams.img_shape,)),
-                                   2 * (self.hparams.img_shape // 2,), (0, 1))
+                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i], s=2 * (self.hparams.img_shape,)),
+                           2 * (self.hparams.img_shape // 2,), (0, 1))
                 y_img = y_real[i]
             else:
-                x_img = torch.roll(torch.fft.irfftn(self.mask * torch.from_numpy(x_dft).to(pred_img.device),
+                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i],
                                                     s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
                 y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
 
-            x_img = torch.clamp((x_img - x_img.min()) / (x_img.max() - x_img.min()), 0, 1)
+            fbp_img = torch.clamp((fbp_img - fbp_img.min()) / (fbp_img.max() - fbp_img.min()), 0, 1)
             pred_img_ = pred_img[i]
             pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) / (pred_img_.max() - pred_img_.min()), 0, 1)
             y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
 
-            self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), x_img.unsqueeze(0),
+            self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), fbp_img.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
             self.trainer.logger.experiment.add_image('predcitions/img_{}'.format(i), pred_img_.unsqueeze(0),
                                                      global_step=self.trainer.global_step)
@@ -273,14 +344,14 @@ class TRecTransformerModule(LightningModule):
         self.log('Train/avg_val_phi_loss', torch.mean(torch.stack(phi_loss)), logger=True, on_epoch=True)
 
     def test_step(self, batch, batch_idx):
-        x, y, y_real, (mag_min, mag_max) = batch
-        assert len(x) == 1, 'Test images have to be evaluated independently.'
+        x_fc, fbp_fc, y, y_real, (mag_min, mag_max) = batch
+        assert len(x_fc) == 1, 'Test images have to be evaluated independently.'
         if self.bin_factor != 1:
             print('bin_factor set to 1.')
             self.bin_factor = 1
-        x_fc_, out_pos_emb, y_fc_ = self._bin_data(x, y)
+        x_fc_, fbp_fc_, y_fc_ = self._bin_data(x_fc, fbp_fc, y)
 
-        _, pred_img = self.trec.forward(x_fc_, out_pos_emb, mag_min=mag_min, mag_max=mag_max,
+        _, pred_img = self.trec.forward(x_fc_, fbp_fc_, mag_min=mag_min, mag_max=mag_max,
                                         dst_flatten_coords=self.dst_flatten_coords,
                                         img_shape=self.hparams.img_shape,
                                         attenuation=self.mask)

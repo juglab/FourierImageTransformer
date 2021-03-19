@@ -2,6 +2,7 @@ import torch
 from pytorch_lightning import LightningModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from fit.modules.loss import _fc_prod_loss, _fc_sum_loss
 from fit.transformers.SResTransformer import SResTransformerTrain, SResTransformerPredict
 from fit.utils import convert2FC, PSNR, convert_to_dft
 from fit.utils.RAdam import RAdam
@@ -16,6 +17,7 @@ from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 class SResTransformerModule(LightningModule):
     def __init__(self, d_model, img_shape,
                  x_coords_img, y_coords_img, dst_flatten_order, dst_order,
+                 loss='prod',
                  lr=0.0001,
                  weight_decay=0.01,
                  n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
@@ -23,6 +25,7 @@ class SResTransformerModule(LightningModule):
 
         self.save_hyperparameters("d_model",
                                   "img_shape",
+                                  "loss",
                                   "lr",
                                   "weight_decay",
                                   "n_layers",
@@ -36,6 +39,11 @@ class SResTransformerModule(LightningModule):
         self.dst_flatten_order = dst_flatten_order
         self.dst_order = dst_order
         self.dft_shape = (img_shape, img_shape // 2 + 1)
+
+        if loss == 'prod':
+            self.loss = _fc_prod_loss
+        else:
+            self.loss = _fc_sum_loss
 
         self.sres = SResTransformerTrain(d_model=self.hparams.d_model,
                                          y_coords_img=self.y_coords_img, x_coords_img=self.x_coords_img,
@@ -64,19 +72,8 @@ class SResTransformerModule(LightningModule):
             'monitor': 'Train/avg_val_loss'
         }
 
-    def _fc_loss(self, pred_fc, target_fc, mag_min, mag_max):
-        pred_amp = denormalize_amp(pred_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
-        target_amp = denormalize_amp(target_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
-
-        pred_phi = denormalize_phi(pred_fc[..., 1])
-        target_phi = denormalize_phi(target_fc[..., 1])
-
-        amp_loss = 0 + torch.pow(pred_amp - target_amp, 2)
-        phi_loss = 1 - torch.cos(pred_phi - target_phi)
-        return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
-
     def criterion(self, pred_fc, target_fc, mag_min, mag_max):
-        fc_loss, amp_loss, phi_loss = self._fc_loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
+        fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
                                                     mag_max=mag_max)
         return fc_loss, amp_loss, phi_loss
 
