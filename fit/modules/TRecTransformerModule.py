@@ -77,7 +77,7 @@ class TRecTransformerModule(LightningModule):
             self.loss = _fc_sum_loss
 
         if not self.hparams.use_fbp:
-            self.register_buffer('random_cond', torch.rand(1, self.dst_flatten_coords.shape[0], 2))
+            self.register_buffer('random_cond', torch.rand(1, self.dst_flatten_coords.shape[0], 2) * 0.0)
         else:
             self.random_cond = None
 
