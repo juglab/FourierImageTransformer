@@ -9,7 +9,7 @@ from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
 class SResTransformerTrain(torch.nn.Module):
     def __init__(self,
                  d_model,
-                 y_coords_img, x_coords_img, flatten_order,
+                 coords, flatten_order,
                  attention_type="linear",
                  n_layers=4,
                  n_heads=4,
@@ -22,8 +22,7 @@ class SResTransformerTrain(torch.nn.Module):
 
         self.pos_embedding = PositionalEncoding2D(
             d_model // 2,
-            y_coords_img,
-            x_coords_img,
+            coords=coords,
             flatten_order=flatten_order,
             persistent=False
         )
@@ -60,7 +59,7 @@ class SResTransformerTrain(torch.nn.Module):
 
 class SResTransformerPredict(torch.nn.Module):
 
-    def __init__(self, d_model, y_coords_img, x_coords_img, flatten_order,
+    def __init__(self, d_model, coords, flatten_order,
                  attention_type="full", n_layers=4, n_heads=4,
                  d_query=32, dropout=0.1,
                  attention_dropout=0.1):
@@ -70,8 +69,7 @@ class SResTransformerPredict(torch.nn.Module):
 
         self.pos_embedding = PositionalEncoding2D(
             d_model // 2,
-            y_coords_img,
-            x_coords_img,
+            coords=coords,
             flatten_order=flatten_order,
             persistent=False
         )

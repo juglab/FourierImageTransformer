@@ -16,7 +16,7 @@ from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi
 
 class SResTransformerModule(LightningModule):
     def __init__(self, d_model, img_shape,
-                 x_coords_img, y_coords_img, dst_flatten_order, dst_order,
+                 coords, dst_flatten_order, dst_order,
                  loss='prod',
                  lr=0.0001,
                  weight_decay=0.01,
@@ -34,8 +34,7 @@ class SResTransformerModule(LightningModule):
                                   "dropout",
                                   "attention_dropout")
 
-        self.x_coords_img = x_coords_img
-        self.y_coords_img = y_coords_img
+        self.coords = coords
         self.dst_flatten_order = dst_flatten_order
         self.dst_order = dst_order
         self.dft_shape = (img_shape, img_shape // 2 + 1)
@@ -46,7 +45,7 @@ class SResTransformerModule(LightningModule):
             self.loss = _fc_sum_loss
 
         self.sres = SResTransformerTrain(d_model=self.hparams.d_model,
-                                         y_coords_img=self.y_coords_img, x_coords_img=self.x_coords_img,
+                                         coords=self.coords,
                                          flatten_order=self.dst_flatten_order,
                                          attention_type='causal-linear',
                                          n_layers=self.hparams.n_layers,
@@ -73,8 +72,8 @@ class SResTransformerModule(LightningModule):
         }
 
     def criterion(self, pred_fc, target_fc, mag_min, mag_max):
-        fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, mag_min=mag_min,
-                                                    mag_max=mag_max)
+        fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, amp_min=mag_min,
+                                                amp_max=mag_max)
         return fc_loss, amp_loss, phi_loss
 
     def training_step(self, batch, batch_idx):
@@ -135,7 +134,7 @@ class SResTransformerModule(LightningModule):
 
     def load_test_model(self, path):
         self.sres_pred = SResTransformerPredict(self.hparams.d_model,
-                                                y_coords_img=self.y_coords_img, x_coords_img=self.x_coords_img,
+                                                coords=self.coords,
                                                 flatten_order=self.dst_flatten_order,
                                                 attention_type='causal-linear',
                                                 n_layers=self.hparams.n_layers,
