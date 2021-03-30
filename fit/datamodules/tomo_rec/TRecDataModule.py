@@ -129,8 +129,8 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
                                                  img_shape=self.IMG_SHAPE)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
@@ -218,8 +218,8 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
                                                  img_shape=self.gt_shape, inner_circle=self.inner_circle)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
@@ -310,8 +310,8 @@ class CropLoDoPaBFourierTargetDataModule(LightningDataModule):
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
                                                  img_shape=self.gt_shape)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
@@ -380,8 +380,8 @@ class KanjiFourierTargetDataModule(LightningDataModule):
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
                                                  img_shape=self.IMG_SHAPE)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
@@ -452,8 +452,8 @@ class CelebAFourierTargetDataModule(LightningDataModule):
 
         tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
                                                  img_shape=self.gt_shape)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(

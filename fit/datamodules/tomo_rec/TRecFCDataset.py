@@ -4,6 +4,8 @@ import torch.fft
 from skimage.transform import iradon
 from torch.utils.data import Dataset
 
+from fit.utils.utils import log_amplitudes, normalize_FC
+
 
 class TRecFourierCoefficientDataset(Dataset):
     def __init__(self, ds, mag_min, mag_max, part='train', img_shape=42, inner_circle=True):
@@ -18,14 +20,13 @@ class TRecFourierCoefficientDataset(Dataset):
                 tmp_sinos.append(sino)
 
             tmp_sinos = torch.stack(tmp_sinos)
-            tmp_sinos = torch.fft.rfftn(tmp_sinos, dim=[1, 2]).abs()
-            tmp_sinos[tmp_sinos == 0] = 1.
-            tmp_sinos = torch.log(tmp_sinos)
-            self.mag_min = tmp_sinos.min()
-            self.mag_max = tmp_sinos.max()
+            tmp_ffts = torch.fft.rfftn(tmp_sinos, dim=[1, 2])
+            tmp_amps = log_amplitudes(tmp_ffts.abs())
+            self.amp_min = tmp_amps.min()
+            self.amp_max = tmp_amps.max()
         else:
-            self.mag_min = mag_min
-            self.mag_max = mag_max
+            self.amp_min = mag_min
+            self.amp_max = mag_max
 
     def __getitem__(self, item):
         sino, img = self.ds[item]
@@ -36,33 +37,14 @@ class TRecFourierCoefficientDataset(Dataset):
         fbp_fft = torch.fft.rfftn(torch.roll(fbp, 2 * (img.shape[0] // 2 + 1,), (0, 1)), dim=[0, 1])
         img_fft = torch.fft.rfftn(torch.roll(img, 2 * (img.shape[0] // 2 + 1,), (0, 1)), dim=[0, 1])
 
-        sino_mag = sino_fft.abs()
-        sino_mag[sino_mag == 0] = 1.
-        sino_mag = torch.log(sino_mag)
-        sino_phi = sino_fft.angle()
+        sino_amp, sino_phi = normalize_FC(sino_fft, amp_min=self.amp_min, amp_max=self.amp_max)
+        fbp_amp, fbp_phi = normalize_FC(fbp_fft, amp_min=self.amp_min, amp_max=self.amp_max)
+        img_amp, img_phi = normalize_FC(img_fft, amp_min=self.amp_min, amp_max=self.amp_max)
 
-        fbp_mag = fbp_fft.abs()
-        fbp_mag[fbp_mag == 0] = 1.
-        fbp_mag = torch.log(fbp_mag)
-        fbp_phi = fbp_fft.angle()
-
-        img_mag = img_fft.abs()
-        img_mag[img_mag == 0] = 1.
-        img_mag = torch.log(img_mag)
-        img_phi = img_fft.angle()
-
-        sino_mag = 2 * (sino_mag - self.mag_min) / (self.mag_max - self.mag_min) - 1
-        fbp_mag = 2 * (fbp_mag - self.mag_min) / (self.mag_max - self.mag_min) - 1
-        img_mag = 2 * (img_mag - self.mag_min) / (self.mag_max - self.mag_min) - 1
-
-        sino_phi = sino_phi / np.pi
-        fbp_phi = fbp_phi / np.pi
-        img_phi = img_phi / np.pi
-
-        sino_fft = torch.stack([sino_mag.flatten(), sino_phi.flatten()], dim=-1)
-        fbp_fft = torch.stack([fbp_mag.flatten(), fbp_phi.flatten()], dim=-1)
-        img_fft = torch.stack([img_mag.flatten(), img_phi.flatten()], dim=-1)
-        return sino_fft, fbp_fft, img_fft, img, (self.mag_min.unsqueeze(-1), self.mag_max.unsqueeze(-1))
+        sino_fc = torch.stack([sino_amp.flatten(), sino_phi.flatten()], dim=-1)
+        fbp_fc = torch.stack([fbp_amp.flatten(), fbp_phi.flatten()], dim=-1)
+        img_fc = torch.stack([img_amp.flatten(), img_phi.flatten()], dim=-1)
+        return sino_fc, fbp_fc, img_fc, img, (self.amp_min.unsqueeze(-1), self.amp_max.unsqueeze(-1))
 
     def __len__(self):
         return len(self.ds)

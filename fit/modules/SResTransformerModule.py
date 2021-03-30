@@ -4,7 +4,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fit.modules.loss import _fc_prod_loss, _fc_sum_loss
 from fit.transformers.SResTransformer import SResTransformerTrain, SResTransformerPredict
-from fit.utils import convert2FC, PSNR, convert_to_dft
+from fit.utils import denormalize_FC, PSNR, convert2DFT
 from fit.utils.RAdam import RAdam
 
 import numpy as np
@@ -175,8 +175,8 @@ class SResTransformerModule(LightningModule):
         return x_hat
 
     def convert2img(self, fc, mag_min, mag_max):
-        dft = convert_to_dft(fc=fc, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=self.dst_flatten_order,
-                             img_shape=self.hparams.img_shape)
+        dft = convert2DFT(x=fc, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=self.dst_flatten_order,
+                          img_shape=self.hparams.img_shape)
         return torch.fft.irfftn(dft, s=2 * (self.hparams.img_shape,), dim=[1, 2])
 
     def test_step(self, batch, batch_idx):

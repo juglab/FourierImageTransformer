@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from fit.datamodules.tomo_rec import MNISTTomoFourierTargetDataModule
 from fit.modules.loss import _fc_prod_loss, _fc_sum_loss
 from fit.transformers.TRecTransformer import TRecTransformer, TRecEncoder, TRecConvBlock, TRecEncDec
-from fit.utils import convert2FC, fft_interpolate, PSNR, convert_to_dft, psfft
+from fit.utils import denormalize_FC, fft_interpolate, PSNR, convert2DFT, psf_rfft
 from fit.utils.RAdam import RAdam
 
 import numpy as np
@@ -69,7 +69,7 @@ class TRecTransformerModule(LightningModule):
         self.bin_count = 0
         self.best_mean_val_mse = 9999999
         self.bin_factor_patience = 10
-        self.register_buffer('mask', psfft(self.bin_factor, pixel_res=img_shape))
+        self.register_buffer('mask', psf_rfft(self.bin_factor, pixel_res=img_shape))
 
         if loss == 'prod':
             self.loss = _fc_prod_loss
@@ -154,8 +154,8 @@ class TRecTransformerModule(LightningModule):
         }
 
     def _real_loss(self, pred_img, target_fc, mag_min, mag_max):
-        dft_target = convert_to_dft(fc=target_fc, mag_min=mag_min, mag_max=mag_max,
-                                    dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_target = convert2DFT(x=target_fc, amp_min=mag_min, amp_max=mag_max,
+                                 dst_flatten_order=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
         if self.bin_factor > 1:
             dft_target *= self.mask
 
@@ -164,8 +164,8 @@ class TRecTransformerModule(LightningModule):
         return F.mse_loss(pred_img, y_target)
 
     def _fc_loss(self, pred_fc, target_fc, mag_min, mag_max):
-        pred_amp = denormalize_amp(pred_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
-        target_amp = denormalize_amp(target_fc[..., 0], mag_min=mag_min, mag_max=mag_max)
+        pred_amp = denormalize_amp(pred_fc[..., 0], amp_min=mag_min, amp_max=mag_max)
+        target_amp = denormalize_amp(target_fc[..., 0], amp_min=mag_min, amp_max=mag_max)
 
         pred_phi = denormalize_phi(pred_fc[..., 1])
         target_phi = denormalize_phi(target_fc[..., 1])
@@ -226,8 +226,8 @@ class TRecTransformerModule(LightningModule):
         self.log('Train/phi_loss', torch.mean(torch.stack(phi_loss)), logger=True, on_epoch=True)
 
     def _gt_bin_mse(self, y_fc, y_real, mag_min, mag_max):
-        dft_y = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
-                               dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_y = convert2DFT(x=y_fc, amp_min=mag_min, amp_max=mag_max,
+                            dst_flatten_order=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
         y_hat = torch.roll(torch.fft.irfftn(dft_y, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
                            2 * (self.hparams.img_shape // 2,), (1, 2))
 
@@ -268,10 +268,10 @@ class TRecTransformerModule(LightningModule):
                 'phi_loss': phi_loss}
 
     def log_val_images(self, pred_img, fbp_fc, y_fc, y_real, mag_min, mag_max):
-        dft_fbp = convert_to_dft(fc=fbp_fc, mag_min=mag_min, mag_max=mag_max,
-                                 dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
-        dft_target = convert_to_dft(fc=y_fc, mag_min=mag_min, mag_max=mag_max,
-                                    dst_flatten_coords=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_fbp = convert2DFT(x=fbp_fc, amp_min=mag_min, amp_max=mag_max,
+                              dst_flatten_order=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
+        dft_target = convert2DFT(x=y_fc, amp_min=mag_min, amp_max=mag_max,
+                                 dst_flatten_order=self.dst_flatten_coords, img_shape=self.hparams.img_shape)
 
         for i in range(min(3, len(pred_img))):
 
@@ -325,7 +325,7 @@ class TRecTransformerModule(LightningModule):
             self.bin_factor_patience = 10
             self.best_mean_val_mse = mean_val_mse
             self.bin_factor = max(1, self.bin_factor // 2)
-            self.register_buffer('mask', psfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
+            self.register_buffer('mask', psf_rfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
             print('Reduced bin_factor to {}.'.format(self.bin_factor))
 
         if self.bin_factor > 1:

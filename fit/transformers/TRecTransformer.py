@@ -2,7 +2,7 @@ import torch
 from fast_transformers.builders import TransformerDecoderBuilder, TransformerEncoderBuilder
 
 from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
-from fit.utils import convert2FC, convert_to_dft
+from fit.utils import denormalize_FC, convert2DFT
 from torch.nn import functional as F
 
 
@@ -86,8 +86,8 @@ class TRecTransformer(torch.nn.Module):
         y_phase = F.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
-        dft_hat = convert_to_dft(y_hat, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
-                                 img_shape=img_shape)
+        dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
+                              img_shape=img_shape)
         dft_hat *= attenuation
         img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
                              2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
@@ -168,8 +168,8 @@ class TRecEncDec(torch.nn.Module):
         y_phase = F.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
-        dft_hat = convert_to_dft(y_hat, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
-                                 img_shape=img_shape)
+        dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
+                              img_shape=img_shape)
         dft_hat *= attenuation
         img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
                              2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
@@ -231,8 +231,8 @@ class TRecEncoder(torch.nn.Module):
         y_phase = F.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
-        dft_hat = convert_to_dft(y_hat, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
-                                 img_shape=img_shape)
+        dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
+                              img_shape=img_shape)
         dft_hat *= attenuation
         img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
                              2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
@@ -263,8 +263,8 @@ class TRecConvBlock(torch.nn.Module):
         )
 
     def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
-        dft_hat = convert_to_dft(fbp, mag_min=mag_min, mag_max=mag_max, dst_flatten_coords=dst_flatten_coords,
-                                 img_shape=img_shape)
+        dft_hat = convert2DFT(fbp, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
+                              img_shape=img_shape)
         dft_hat *= attenuation
         img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
                              2 * (img_shape // 2,), (1, 2)).unsqueeze(1)

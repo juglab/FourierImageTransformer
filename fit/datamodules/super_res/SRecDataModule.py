@@ -57,26 +57,26 @@ class MNISTSResFourierTargetDataModule(LightningDataModule):
         mnist_test = normalize(mnist_test, self.mean, self.std)
         self.gt_ds = GroundTruthDataset(mnist_train, mnist_val, mnist_test)
 
-        tmp_fcds = SResFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+        tmp_fcds = SResFourierCoefficientDataset(self.gt_ds, amp_min=None, amp_max=None, part='train',
                                                  img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
-            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+            SResFourierCoefficientDataset(self.gt_ds, amp_min=self.mag_min, amp_max=self.mag_max, part='train',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
+            SResFourierCoefficientDataset(self.gt_ds, amp_min=self.mag_min, amp_max=self.mag_max, part='validation',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+            SResFourierCoefficientDataset(self.gt_ds, amp_min=self.mag_min, amp_max=self.mag_max, part='test',
                                           img_shape=MNISTSResFourierTargetDataModule.IMG_SHAPE),
             batch_size=self.batch_size)
 
@@ -114,25 +114,25 @@ class CelebASResFourierTargetDataModule(LightningDataModule):
         gt_test = normalize(gt_test, self.mean, self.std)
         self.gt_ds = GroundTruthDataset(gt_train, gt_val, gt_test)
 
-        tmp_fcds = SResFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
+        tmp_fcds = SResFourierCoefficientDataset(self.gt_ds, amp_min=None, amp_max=None, part='train',
                                                  img_shape=self.gt_shape)
-        self.mag_min = tmp_fcds.mag_min
-        self.mag_max = tmp_fcds.mag_max
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
 
     def train_dataloader(self, *args, **kwargs) -> DataLoader:
         return DataLoader(
-            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
+            SResFourierCoefficientDataset(self.gt_ds, amp_min=self.mag_min, amp_max=self.mag_max, part='train',
                                           img_shape=self.gt_shape),
             batch_size=self.batch_size, num_workers=1)
 
     def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
+            SResFourierCoefficientDataset(self.gt_ds, amp_min=self.mag_min, amp_max=self.mag_max, part='validation',
                                           img_shape=self.gt_shape),
             batch_size=self.batch_size, num_workers=1)
 
     def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            SResFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
+            SResFourierCoefficientDataset(self.gt_ds, amp_min=self.mag_min, amp_max=self.mag_max, part='test',
                                           img_shape=self.gt_shape),
             batch_size=self.batch_size)
