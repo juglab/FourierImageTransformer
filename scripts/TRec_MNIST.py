@@ -71,7 +71,7 @@ def main():
                                                        x_coords_img=model.x_coords_img,
                                                        angles=model.angles,
                                                        src_flatten_coords=model.src_flatten_coords,
-                                                       dst_flatten_coords=model.dst_flatten_coords,
+                                                       dst_flatten_coords=model.dst_flatten_order,
                                                        dst_order=model.dst_order)
 
     test_res = trainer.test(model, datamodule=dm)[0]
@@ -90,7 +90,7 @@ def main():
                                                        x_coords_img=model.x_coords_img,
                                                        angles=model.angles,
                                                        src_flatten_coords=model.src_flatten_coords,
-                                                       dst_flatten_coords=model.dst_flatten_coords,
+                                                       dst_flatten_coords=model.dst_flatten_order,
                                                        dst_order=model.dst_order)
 
     test_res = trainer.test(model, datamodule=dm)[0]

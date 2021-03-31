@@ -6,7 +6,7 @@ from os.path import exists
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from fit.datamodules.super_res.SRecDataModule import CelebASResFourierTargetDataModule
+from fit.datamodules.super_res.SResDataModule import CelebASResFourierTargetDataModule
 from fit.modules import SResTransformerModule
 
 

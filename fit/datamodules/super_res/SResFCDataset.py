@@ -7,9 +7,8 @@ from fit.utils.utils import normalize_FC, log_amplitudes
 
 
 class SResFourierCoefficientDataset(Dataset):
-    def __init__(self, ds, amp_min, amp_max, part='train', img_shape=42):
-        self.ds = ds.create_torch_dataset(part=part)
-        self.img_shape = img_shape
+    def __init__(self, ds, amp_min, amp_max):
+        self.ds = ds
         if amp_min == None and amp_max == None:
             tmp_imgs = []
             for i in np.random.permutation(len(self.ds))[:200]:

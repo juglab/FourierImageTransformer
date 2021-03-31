@@ -1,98 +1,99 @@
-from glob import glob
-from os.path import join
+from os.path import join, exists
 from typing import Optional, Union, List
 
 import dival
 import numpy as np
 import torch
-from imageio import imread
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
 from fit.datamodules.tomo_rec.TRecFCDataset import TRecFourierCoefficientDataset
-from fit.datamodules.GroundTruthDataset import GroundTruthDataset
-import odl
+from fit.datamodules.GroundTruthDatasetFactory import GroundTruthDatasetFactory
 from skimage.transform import resize
 
-from fit.utils.tomo_utils import get_detector_length
 from fit.utils.utils import normalize
 
-
-def get_projection_dataset(dataset, num_angles, im_shape=70, impl='astra_cpu', inner_circle=True):
-    assert isinstance(dataset, GroundTruthDataset)
-    reco_space = dataset.space
-    if inner_circle:
-        space = odl.uniform_discr(min_pt=reco_space.min_pt,
-                                  max_pt=reco_space.max_pt,
-                                  shape=(im_shape, im_shape), dtype=np.float32)
-        min_pt = reco_space.min_pt
-        max_pt = reco_space.max_pt
-        proj_space = odl.uniform_discr(min_pt, max_pt, 2 * (2 * int(reco_space.max_pt[0]) - 1,), dtype=np.float32)
-        detector_length = get_detector_length(proj_space)
-        det_partition = odl.uniform_partition(-np.sqrt((reco_space.shape[0] / 2.) ** 2 / 2),
-                                              np.sqrt((reco_space.shape[0] / 2.) ** 2 / 2),
-                                              detector_length)
-    else:
-        space = odl.uniform_discr(min_pt=reco_space.min_pt,
-                                  max_pt=reco_space.max_pt,
-                                  shape=(im_shape, im_shape), dtype=np.float32)
-        min_pt = reco_space.min_pt
-        max_pt = reco_space.max_pt
-        proj_space = odl.uniform_discr(min_pt, max_pt, 2 * (reco_space.shape[0],), dtype=np.float32)
-        detector_length = get_detector_length(proj_space)
-        det_partition = odl.uniform_partition(-reco_space.shape[0] / 2., reco_space.shape[0] / 2., detector_length)
-
-    angle_partition = odl.uniform_partition(0, np.pi, num_angles)
-    reco_geometry = odl.tomo.Parallel2dGeometry(angle_partition, det_partition)
-
-    ray_trafo = odl.tomo.RayTransform(space, reco_geometry, impl=impl)
-
-    def get_reco_ray_trafo(**kwargs):
-        return odl.tomo.RayTransform(reco_space, reco_geometry, **kwargs)
-
-    reco_ray_trafo = get_reco_ray_trafo(impl=impl)
-
-    class _ResizeOperator(odl.Operator):
-        def __init__(self):
-            super().__init__(reco_space, space)
-
-        def _call(self, x, out, **kwargs):
-            out.assign(space.element(resize(x, (im_shape, im_shape), order=1)))
-
-    # forward operator
-    resize_op = _ResizeOperator()
-    forward_op = ray_trafo * resize_op
-
-    ds = dataset.create_pair_dataset(
-        forward_op=forward_op, noise_type=None)
-
-    ds.get_ray_trafo = get_reco_ray_trafo
-    ds.ray_trafo = reco_ray_trafo
-    return ds
+import wget
 
 
-class MNISTTomoFourierTargetDataModule(LightningDataModule):
-    IMG_SHAPE = 27
-
-    def __init__(self, root_dir, batch_size, num_angles=15, inner_circle=True):
+class TomoFITDataModule(LightningDataModule):
+    def __init__(self, root_dir, gt_shape, batch_size, num_angles=15):
         """
-        :param root_dir:
+
+        :param root_dir: path to downloaded data
+        :param gt_shape: size of the ground truth data
         :param batch_size:
-        :param num_angles:
+        :param num_angles: for projection
         """
         super().__init__()
         self.root_dir = root_dir
+        self.gt_shape = gt_shape
         self.batch_size = batch_size
         self.num_angles = num_angles
-        self.inner_circle = inner_circle
+        self.inner_circle = True
         self.gt_ds = None
         self.mean = None
         self.std = None
         self.mag_min = None
         self.mag_max = None
 
+    def __get_circle__(self):
+        x, y = torch.meshgrid(torch.arange(-self.gt_shape // 2 + 1,
+                                           self.gt_shape // 2 + 1),
+                              torch.arange(-self.gt_shape // 2 + 1,
+                                           self.gt_shape // 2 + 1))
+        return torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
+
+    def prepare_data(self, *args, **kwargs):
+        raise NotImplementedError
+
     def setup(self, stage: Optional[str] = None):
+        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds.create_torch_dataset(part='train'),
+                                                 angles=self.gt_ds.ray_trafo.geometry.angles, mag_min=None,
+                                                 mag_max=None, img_shape=self.gt_shape)
+        self.mag_min = tmp_fcds.amp_min
+        self.mag_max = tmp_fcds.amp_max
+
+    def train_dataloader(self, *args, **kwargs) -> DataLoader:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds.create_torch_dataset(part='train'),
+                                          angles=self.gt_ds.ray_trafo.geometry.angles, mag_min=self.mag_min,
+                                          mag_max=self.mag_max, img_shape=self.gt_shape),
+            batch_size=self.batch_size, num_workers=1)
+
+    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds.create_torch_dataset(part='validation'),
+                                          angles=self.gt_ds.ray_trafo.geometry.angles, mag_min=self.mag_min,
+                                          mag_max=self.mag_max, img_shape=self.gt_shape),
+            batch_size=self.batch_size, num_workers=1)
+
+    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
+        return DataLoader(
+            TRecFourierCoefficientDataset(self.gt_ds.create_torch_dataset(part='test'),
+                                          angles=self.gt_ds.ray_trafo.geometry.angles, mag_min=self.mag_min,
+                                          mag_max=self.mag_max, img_shape=self.gt_shape),
+            batch_size=1)
+
+
+class MNIST_TRecFITDM(TomoFITDataModule):
+
+    def __init__(self, root_dir, batch_size, num_angles=15):
+        """
+        Uses the MNIST[1] dataset via the PyTorch API.
+
+        :param root_dir: path to downloaded data
+        :param batch_size:
+        :param num_angles: for projection
+
+        References:
+            [1] Yann LeCun and Corinna Cortes.
+            MNIST handwritten digit database. 2010.
+        """
+        super().__init__(root_dir=root_dir, gt_shape=27, batch_size=batch_size, num_angles=num_angles)
+
+    def prepare_data(self, *args, **kwargs):
         mnist_test = MNIST(self.root_dir, train=False, download=True).data.type(torch.float32)
         mnist_train_val = MNIST(self.root_dir, train=True, download=True).data.type(torch.float32)
         np.random.seed(1612)
@@ -101,16 +102,12 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         mnist_val = mnist_train_val[perm[55000:], 1:, 1:]
         mnist_test = mnist_test[:, 1:, 1:]
 
-        assert mnist_train.shape[1] == self.IMG_SHAPE
-        assert mnist_train.shape[2] == self.IMG_SHAPE
-        x, y = torch.meshgrid(torch.arange(-self.IMG_SHAPE // 2 + 1,
-                                           self.IMG_SHAPE // 2 + 1),
-                              torch.arange(-self.IMG_SHAPE // 2 + 1,
-                                           self.IMG_SHAPE // 2 + 1))
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.IMG_SHAPE // 2
-        mnist_train = circle * np.clip(mnist_train, 50, 255)
-        mnist_val = circle * np.clip(mnist_val, 50, 255)
-        mnist_test = circle * np.clip(mnist_test, 50, 255)
+        assert mnist_train.shape[1] == self.gt_shape
+        assert mnist_train.shape[2] == self.gt_shape
+
+        mnist_train = np.clip(mnist_train, 50, 255)
+        mnist_val = np.clip(mnist_val, 50, 255)
+        mnist_test = np.clip(mnist_test, 50, 255)
 
         self.mean = mnist_train.mean()
         self.std = mnist_train.std()
@@ -119,57 +116,36 @@ class MNISTTomoFourierTargetDataModule(LightningDataModule):
         mnist_val = normalize(mnist_val, self.mean, self.std)
         mnist_test = normalize(mnist_test, self.mean, self.std)
 
+        circle = self.__get_circle__()
         mnist_train *= circle
         mnist_val *= circle
         mnist_test *= circle
 
-        self.gt_ds = get_projection_dataset(
-            GroundTruthDataset(mnist_train, mnist_val, mnist_test),
-            num_angles=self.num_angles, im_shape=70, impl='astra_cpu', inner_circle=self.inner_circle)
-
-        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
-                                                 img_shape=self.IMG_SHAPE)
-        self.mag_min = tmp_fcds.amp_min
-        self.mag_max = tmp_fcds.amp_max
-
-    def train_dataloader(self, *args, **kwargs) -> DataLoader:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
-                                          img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=1)
-
-    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
-                                          img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=1)
-
-    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
-                                          img_shape=self.IMG_SHAPE),
-            batch_size=1)
+        ds_factory = GroundTruthDatasetFactory(mnist_train, mnist_val, mnist_test, inner_circle=self.inner_circle)
+        self.gt_ds = ds_factory.build_projection_dataset(num_angles=self.num_angles,
+                                                         upscale_shape=70,
+                                                         impl='astra_cpu')
 
 
-class LoDoPaBFourierTargetDataModule(LightningDataModule):
+class LoDoPaB_TRecFITDM(TomoFITDataModule):
     IMG_SHAPE = 361
 
-    def __init__(self, batch_size, gt_shape=361, num_angles=15):
+    def __init__(self, batch_size, gt_shape=111, num_angles=33):
         """
-        :param root_dir:
-        :param batch_size:
-        :param num_angles:
-        """
-        super().__init__()
-        self.batch_size = batch_size
-        self.gt_shape = gt_shape
-        self.num_angles = num_angles
-        self.inner_circle = True
-        self.gt_ds = None
-        self.mean = None
-        self.std = None
+        Uses the LoDoPaB[1] dataset.
 
-    def setup(self, stage: Optional[str] = None):
+        :param batch_size:
+        :param gt_shape: size of the ground truth data
+        :param num_angles: for projection
+
+        References:
+            [1]  Johannes Leuschner, Maximilian Schmidt, Daniel Otero Baguer, and Peter Maaß.
+            The lodopab-ct dataset: A benchmark dataset for low-dose ct reconstruction methods.
+            arXiv preprint arXiv:1910.01113, 2019.
+        """
+        super().__init__(root_dir=None, gt_shape=gt_shape, batch_size=batch_size, num_angles=num_angles)
+
+    def prepare_data(self, *args, **kwargs):
         lodopab = dival.get_standard_dataset('lodopab', impl='astra_cpu')
         assert self.gt_shape <= self.IMG_SHAPE, 'GT is larger than original images.'
         if self.gt_shape < self.IMG_SHAPE:
@@ -195,11 +171,6 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
 
         assert gt_train.shape[1] == self.gt_shape
         assert gt_train.shape[2] == self.gt_shape
-        x, y = torch.meshgrid(torch.arange(-self.gt_shape // 2 + 1,
-                                           self.gt_shape // 2 + 1),
-                              torch.arange(-self.gt_shape // 2 + 1,
-                                           self.gt_shape // 2 + 1))
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
 
         self.mean = gt_train.mean()
         self.std = gt_train.std()
@@ -207,58 +178,37 @@ class LoDoPaBFourierTargetDataModule(LightningDataModule):
         gt_train = normalize(gt_train, self.mean, self.std)
         gt_val = normalize(gt_val, self.mean, self.std)
         gt_test = normalize(gt_test, self.mean, self.std)
+
+        circle = self.__get_circle__()
         gt_train *= circle
         gt_val *= circle
         gt_test *= circle
 
-        self.gt_ds = get_projection_dataset(
-            GroundTruthDataset(gt_train, gt_val, gt_test),
-            num_angles=self.num_angles, im_shape=self.gt_shape + (self.gt_shape // 2 - 7), impl='astra_cpu',
-            inner_circle=self.inner_circle)
-
-        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
-                                                 img_shape=self.gt_shape, inner_circle=self.inner_circle)
-        self.mag_min = tmp_fcds.amp_min
-        self.mag_max = tmp_fcds.amp_max
-
-    def train_dataloader(self, *args, **kwargs) -> DataLoader:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
-                                          img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=1)
-
-    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
-                                          img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=1)
-
-    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
-                                          img_shape=self.gt_shape),
-            batch_size=1)
+        ds_factory = GroundTruthDatasetFactory(gt_train, gt_val, gt_test, inner_circle=self.inner_circle)
+        self.gt_ds = ds_factory.build_projection_dataset(num_angles=self.num_angles,
+                                                         upscale_shape=self.gt_shape + (self.gt_shape // 2 - 7),
+                                                         impl='astra_cpu')
 
 
-class CropLoDoPaBFourierTargetDataModule(LightningDataModule):
+class CropLoDoPaB_TRecFITDM(TomoFITDataModule):
     IMG_SHAPE = 361
 
-    def __init__(self, batch_size, gt_shape=361, num_angles=15):
+    def __init__(self, batch_size, gt_shape=111, num_angles=33):
         """
-        :param root_dir:
-        :param batch_size:
-        :param num_angles:
-        """
-        super().__init__()
-        self.batch_size = batch_size
-        self.gt_shape = gt_shape
-        self.num_angles = num_angles
-        self.inner_circle = True
-        self.gt_ds = None
-        self.mean = None
-        self.std = None
+        Uses the LoDoPaB[1] dataset.
 
-    def setup(self, stage: Optional[str] = None):
+        :param batch_size:
+        :param gt_shape: size of the ground truth data
+        :param num_angles: for projection
+
+        References:
+            [1]  Johannes Leuschner, Maximilian Schmidt, Daniel Otero Baguer, and Peter Maaß.
+            The lodopab-ct dataset: A benchmark dataset for low-dose ct reconstruction methods.
+            arXiv preprint arXiv:1910.01113, 2019.
+        """
+        super().__init__(root_dir=None, gt_shape=gt_shape, batch_size=batch_size, num_angles=num_angles)
+
+    def prepare_data(self, *args, **kwargs):
         lodopab = dival.get_standard_dataset('lodopab', impl='astra_cpu')
         assert self.gt_shape <= self.IMG_SHAPE, 'GT is larger than original images.'
         if self.gt_shape < self.IMG_SHAPE:
@@ -286,10 +236,6 @@ class CropLoDoPaBFourierTargetDataModule(LightningDataModule):
 
         assert gt_train.shape[1] == self.gt_shape
         assert gt_train.shape[2] == self.gt_shape
-        x, y = torch.meshgrid(torch.arange(-self.gt_shape // 2 + 1,
-                                           self.gt_shape // 2 + 1),
-                              torch.arange(-self.gt_shape // 2 + 1,
-                                           self.gt_shape // 2 + 1))
 
         self.mean = gt_train.mean()
         self.std = gt_train.std()
@@ -298,70 +244,44 @@ class CropLoDoPaBFourierTargetDataModule(LightningDataModule):
         gt_val = normalize(gt_val, self.mean, self.std)
         gt_test = normalize(gt_test, self.mean, self.std)
 
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
+        circle = self.__get_circle__()
         gt_train *= circle
         gt_val *= circle
         gt_test *= circle
 
-        self.gt_ds = get_projection_dataset(
-            GroundTruthDataset(gt_train, gt_val, gt_test),
-            num_angles=self.num_angles, im_shape=self.gt_shape + (self.gt_shape // 2 - 7), impl='astra_cpu',
-            inner_circle=self.inner_circle)
-
-        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
-                                                 img_shape=self.gt_shape)
-        self.mag_min = tmp_fcds.amp_min
-        self.mag_max = tmp_fcds.amp_max
-
-    def train_dataloader(self, *args, **kwargs) -> DataLoader:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
-                                          img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=1)
-
-    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
-                                          img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=1)
-
-    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
-                                          img_shape=self.gt_shape),
-            batch_size=1)
+        ds_factory = GroundTruthDatasetFactory(gt_train, gt_val, gt_test, inner_circle=self.inner_circle)
+        self.gt_ds = ds_factory.build_projection_dataset(num_angles=self.num_angles,
+                                                         upscale_shape=self.gt_shape + (self.gt_shape // 2 - 7),
+                                                         impl='astra_cpu')
 
 
-class KanjiFourierTargetDataModule(LightningDataModule):
-    IMG_SHAPE = 63
+class Kanji_TRecFITDM(TomoFITDataModule):
 
     def __init__(self, root_dir, batch_size, num_angles=33):
         """
-        :param root_dir:
-        :param batch_size:
-        :param num_angles:
-        """
-        super().__init__()
-        self.root_dir = root_dir
-        self.batch_size = batch_size
-        self.num_angles = num_angles
-        self.inner_circle = True
-        self.gt_ds = None
-        self.mean = None
-        self.std = None
+        The underlying data is Kanji[1] saved in a npz file, which is downloaded if it is not available on your machine.
 
-    def setup(self, stage: Optional[str] = None):
+        :param root_dir: path to downloaded data
+        :param batch_size:
+        :param num_angles: for projection
+
+        References:
+            [1] Tarin Clanuwat, Mikel Bober-Irizar, Asanobu Kitamoto, Alex Lamb, Kazuaki Yamamoto, and David Ha.
+            Deep learning for classical japanese literature, 2018.
+        """
+        super().__init__(root_dir=root_dir, gt_shape=63, batch_size=batch_size, num_angles=num_angles)
+
+    def prepare_data(self, *args, **kwargs):
+        if not exists(join(self.root_dir, 'gt_data.npz')):
+            wget.download('https://cloud.mpi-cbg.de/index.php/s/7MK9vNUnq4Ndkhg/download',
+                          out=join(self.root_dir, 'gt_data.npz'))
+
         gt_data = np.load(join(self.root_dir, 'gt_data.npz'))
 
         gt_train = torch.from_numpy(gt_data['gt_train'])
         gt_val = torch.from_numpy(gt_data['gt_val'])
         gt_test = torch.from_numpy(gt_data['gt_test'])
 
-        x, y = torch.meshgrid(torch.arange(-self.IMG_SHAPE // 2 + 1,
-                                           self.IMG_SHAPE // 2 + 1),
-                              torch.arange(-self.IMG_SHAPE // 2 + 1,
-                                           self.IMG_SHAPE // 2 + 1))
-
         self.mean = gt_train.mean()
         self.std = gt_train.std()
 
@@ -369,106 +289,12 @@ class KanjiFourierTargetDataModule(LightningDataModule):
         gt_val = normalize(gt_val, self.mean, self.std)
         gt_test = normalize(gt_test, self.mean, self.std)
 
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.IMG_SHAPE // 2
+        circle = self.__get_circle__()
         gt_train *= circle
         gt_val *= circle
         gt_test *= circle
 
-        self.gt_ds = get_projection_dataset(
-            GroundTruthDataset(gt_train, gt_val, gt_test),
-            num_angles=self.num_angles, im_shape=133, impl='astra_cpu', inner_circle=self.inner_circle)
-
-        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
-                                                 img_shape=self.IMG_SHAPE)
-        self.mag_min = tmp_fcds.amp_min
-        self.mag_max = tmp_fcds.amp_max
-
-    def train_dataloader(self, *args, **kwargs) -> DataLoader:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
-                                          img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=1)
-
-    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
-                                          img_shape=self.IMG_SHAPE),
-            batch_size=self.batch_size, num_workers=1)
-
-    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
-                                          img_shape=self.IMG_SHAPE),
-            batch_size=1)
-
-
-class CelebAFourierTargetDataModule(LightningDataModule):
-    IMG_SHAPE = 127
-
-    def __init__(self, root_dir, batch_size, num_angles=33):
-        """
-        :param root_dir:
-        :param batch_size:
-        :param num_angles:
-        """
-        super().__init__()
-        self.root_dir = root_dir
-        self.batch_size = batch_size
-        self.gt_shape = 63
-        self.num_angles = num_angles
-        self.inner_circle = True
-        self.gt_ds = None
-        self.mean = None
-        self.std = None
-
-    def setup(self, stage: Optional[str] = None):
-        gt_data = np.load(join(self.root_dir, 'gt_data.npz'))
-
-        gt_train = torch.from_numpy(gt_data['gt_train'])
-        gt_val = torch.from_numpy(gt_data['gt_val'])
-        gt_test = torch.from_numpy(gt_data['gt_test'])
-
-        assert gt_train.shape[1] == self.gt_shape
-        assert gt_train.shape[2] == self.gt_shape
-        x, y = torch.meshgrid(torch.arange(-self.gt_shape // 2 + 1,
-                                           self.gt_shape // 2 + 1),
-                              torch.arange(-self.gt_shape // 2 + 1,
-                                           self.gt_shape // 2 + 1))
-        circle = torch.sqrt(x ** 2. + y ** 2.) <= self.gt_shape // 2
-        gt_train *= circle
-        gt_val *= circle
-        gt_test *= circle
-
-        self.mean = gt_train.mean()
-        self.std = gt_train.std()
-
-        gt_train = normalize(gt_train, self.mean, self.std)
-        gt_val = normalize(gt_val, self.mean, self.std)
-        gt_test = normalize(gt_test, self.mean, self.std)
-
-        self.gt_ds = get_projection_dataset(
-            GroundTruthDataset(gt_train, gt_val, gt_test),
-            num_angles=self.num_angles, im_shape=153, impl='astra_cpu', inner_circle=self.inner_circle)
-
-        tmp_fcds = TRecFourierCoefficientDataset(self.gt_ds, mag_min=None, mag_max=None, part='train',
-                                                 img_shape=self.gt_shape)
-        self.mag_min = tmp_fcds.amp_min
-        self.mag_max = tmp_fcds.amp_max
-
-    def train_dataloader(self, *args, **kwargs) -> DataLoader:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='train',
-                                          img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=1)
-
-    def val_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='validation',
-                                          img_shape=self.gt_shape),
-            batch_size=self.batch_size, num_workers=1)
-
-    def test_dataloader(self, *args, **kwargs) -> Union[DataLoader, List[DataLoader]]:
-        return DataLoader(
-            TRecFourierCoefficientDataset(self.gt_ds, mag_min=self.mag_min, mag_max=self.mag_max, part='test',
-                                          img_shape=self.gt_shape),
-            batch_size=1)
+        ds_factory = GroundTruthDatasetFactory(gt_train, gt_val, gt_test, inner_circle=self.inner_circle)
+        self.gt_ds = ds_factory.build_projection_dataset(num_angles=self.num_angles,
+                                                         upscale_shape=133,
+                                                         impl='astra_cpu')

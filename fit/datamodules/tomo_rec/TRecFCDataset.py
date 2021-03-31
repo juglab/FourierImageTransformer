@@ -8,11 +8,11 @@ from fit.utils.utils import log_amplitudes, normalize_FC
 
 
 class TRecFourierCoefficientDataset(Dataset):
-    def __init__(self, ds, mag_min, mag_max, part='train', img_shape=42, inner_circle=True):
-        self.ds = ds.create_torch_dataset(part=part)
+    def __init__(self, ds, angles, mag_min, mag_max, img_shape=42, inner_circle=True):
+        self.ds = ds
         self.img_shape = img_shape
         self.inner_circle = inner_circle
-        self.angles = ds.ray_trafo.geometry.angles
+        self.angles = angles
         if mag_min == None and mag_max == None:
             tmp_sinos = []
             for i in np.random.permutation(len(self.ds))[:200]:

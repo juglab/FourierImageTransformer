@@ -49,6 +49,7 @@ setup(name='fourier-image-transformers',
           "pytorch-fast-transformers",
           "dival<0.6.0",
           "pytorch-lightning",
-          "jupyter"
+          "jupyter",
+          "wget"
       ]
       )
