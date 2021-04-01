@@ -140,3 +140,10 @@ lightning_logs
 
 # lightning_logs
 lightning_logs
+
+# npz
+*.npz
+
+*.pt
+*.gz
+*ubyte
