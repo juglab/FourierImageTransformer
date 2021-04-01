@@ -105,9 +105,10 @@ class MNIST_TRecFITDM(TomoFITDataModule):
         assert mnist_train.shape[1] == self.gt_shape
         assert mnist_train.shape[2] == self.gt_shape
 
-        mnist_train = np.clip(mnist_train, 50, 255)
-        mnist_val = np.clip(mnist_val, 50, 255)
-        mnist_test = np.clip(mnist_test, 50, 255)
+        circle = self.__get_circle__()
+        mnist_train = circle * np.clip(mnist_train, 50, 255)
+        mnist_val = circle * np.clip(mnist_val, 50, 255)
+        mnist_test = circle * np.clip(mnist_test, 50, 255)
 
         self.mean = mnist_train.mean()
         self.std = mnist_train.std()
@@ -116,7 +117,6 @@ class MNIST_TRecFITDM(TomoFITDataModule):
         mnist_val = normalize(mnist_val, self.mean, self.std)
         mnist_test = normalize(mnist_test, self.mean, self.std)
 
-        circle = self.__get_circle__()
         mnist_train *= circle
         mnist_val *= circle
         mnist_test *= circle
