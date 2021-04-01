@@ -147,3 +147,6 @@ lightning_logs
 *.pt
 *.gz
 *ubyte
+
+# model ipynb_checkpoints
+*.ckpt
