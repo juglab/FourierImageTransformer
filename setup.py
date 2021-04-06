@@ -19,7 +19,7 @@ setup(name='fourier-image-transformer',
       long_description_content_type='text/markdown',
       url='https://github.com/juglab/FourierImageTransformer/',
       author='Tim-Oliver Buchholz, Florian Jug',
-      author_email='tibuch@mpi-cbg.de, jug@mpi-cbg.de',
+      author_email='tibuch@mpi-cbg.de, florian.jug@fht.org',
       license='BSD 3-Clause License',
       packages=find_packages(),
 
