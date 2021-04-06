@@ -1,7 +1,6 @@
 import torch
 from fast_transformers.builders import TransformerEncoderBuilder, RecurrentEncoderBuilder
 from fast_transformers.masking import TriangularCausalMask
-from torch.nn import functional as F
 
 from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
 
@@ -9,7 +8,7 @@ from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
 class SResTransformerTrain(torch.nn.Module):
     def __init__(self,
                  d_model,
-                 y_coords_img, x_coords_img, flatten_order,
+                 coords, flatten_order,
                  attention_type="linear",
                  n_layers=4,
                  n_heads=4,
@@ -22,8 +21,7 @@ class SResTransformerTrain(torch.nn.Module):
 
         self.pos_embedding = PositionalEncoding2D(
             d_model // 2,
-            y_coords_img,
-            x_coords_img,
+            coords=coords,
             flatten_order=flatten_order,
             persistent=False
         )
@@ -54,13 +52,13 @@ class SResTransformerTrain(torch.nn.Module):
         triangular_mask = TriangularCausalMask(x.shape[1], device=x.device)
         y_hat = self.encoder(x, attn_mask=triangular_mask)
         y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
         return torch.cat([y_amp, y_phase], dim=-1)
 
 
 class SResTransformerPredict(torch.nn.Module):
 
-    def __init__(self, d_model, y_coords_img, x_coords_img, flatten_order,
+    def __init__(self, d_model, coords, flatten_order,
                  attention_type="full", n_layers=4, n_heads=4,
                  d_query=32, dropout=0.1,
                  attention_dropout=0.1):
@@ -70,8 +68,7 @@ class SResTransformerPredict(torch.nn.Module):
 
         self.pos_embedding = PositionalEncoding2D(
             d_model // 2,
-            y_coords_img,
-            x_coords_img,
+            coords=coords,
             flatten_order=flatten_order,
             persistent=False
         )
@@ -102,5 +99,5 @@ class SResTransformerPredict(torch.nn.Module):
         x = self.pos_embedding.forward_i(x, i)
         y_hat, memory = self.encoder(x, memory)
         y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
         return torch.cat([y_amp, y_phase], dim=-1), memory

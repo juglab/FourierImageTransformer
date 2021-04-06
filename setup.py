@@ -12,14 +12,14 @@ with open(path.join(_dir, 'fit', 'version.py')) as f:
 with open(path.join(_dir, 'README.md')) as f:
     long_description = f.read()
 
-setup(name='fourier-image-transformers',
+setup(name='fourier-image-transformer',
       version=__version__,
       description='Fourier Image Transformer',
       long_description=long_description,
       long_description_content_type='text/markdown',
       url='https://github.com/juglab/FourierImageTransformer/',
       author='Tim-Oliver Buchholz, Florian Jug',
-      author_email='tibuch@mpi-cbg.de, jug@mpi-cbg.de',
+      author_email='tibuch@mpi-cbg.de, florian.jug@fht.org',
       license='BSD 3-Clause License',
       packages=find_packages(),
 
@@ -33,8 +33,6 @@ setup(name='fourier-image-transformers',
           'Topic :: Scientific/Engineering',
           'License :: OSI Approved :: BSD License',
 
-          'Programming Language :: Python :: 3.5',
-          'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
       ],
 
@@ -49,6 +47,7 @@ setup(name='fourier-image-transformers',
           "pytorch-fast-transformers",
           "dival<0.6.0",
           "pytorch-lightning",
-          "jupyter"
+          "jupyter",
+          "wget"
       ]
       )

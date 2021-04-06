@@ -1,2 +1,2 @@
 from .SResFCDataset import SResFourierCoefficientDataset
-from .SRecDataModule import MNISTSResFourierTargetDataModule
+from .SResDataModule import MNIST_SResFITDM, CelebA_SResFITDM
