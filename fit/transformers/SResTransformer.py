@@ -1,7 +1,6 @@
 import torch
 from fast_transformers.builders import TransformerEncoderBuilder, RecurrentEncoderBuilder
 from fast_transformers.masking import TriangularCausalMask
-from torch.nn import functional as F
 
 from fit.transformers.PositionalEncoding2D import PositionalEncoding2D
 
@@ -53,7 +52,7 @@ class SResTransformerTrain(torch.nn.Module):
         triangular_mask = TriangularCausalMask(x.shape[1], device=x.device)
         y_hat = self.encoder(x, attn_mask=triangular_mask)
         y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
         return torch.cat([y_amp, y_phase], dim=-1)
 
 
@@ -100,5 +99,5 @@ class SResTransformerPredict(torch.nn.Module):
         x = self.pos_embedding.forward_i(x, i)
         y_hat, memory = self.encoder(x, memory)
         y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
         return torch.cat([y_amp, y_phase], dim=-1), memory
