@@ -12,7 +12,7 @@ with open(path.join(_dir, 'fit', 'version.py')) as f:
 with open(path.join(_dir, 'README.md')) as f:
     long_description = f.read()
 
-setup(name='fourier-image-transformers',
+setup(name='fourier-image-transformer',
       version=__version__,
       description='Fourier Image Transformer',
       long_description=long_description,
