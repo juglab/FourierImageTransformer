@@ -18,12 +18,12 @@ Preprint: [arXiv](arXiv)
 
 ![SRes](figs/SRes.png)
 
-__FIT for super-resolution.__ Low-resolution input images are first transformed into Fourier space and then unrolled into an
-FDE sequence, as described in Section 3.1 of the paper. This FDE sequence can now be fed to a FIT, that, conditioned on this input,
-extends the FDE sequence to represent a higher resolution image. This setup is trained using an FC-Loss that enforces
-consistency between predicted and ground truth Fourier coefficients. During inference, the FIT is conditioned on the
-first 39 entries of the FDE, corresponding to (a,d) 3x Fourier binned input images. Panels (b,e) show the inverse Fourier
-transform of the predicted output, and panels (c,f) depict the corresponding ground truth.
+__FIT for super-resolution.__ Low-resolution input images are first transformed into Fourier space and then unrolled
+into an FDE sequence, as described in Section 3.1 of the paper. This FDE sequence can now be fed to a FIT, that,
+conditioned on this input, extends the FDE sequence to represent a higher resolution image. This setup is trained using
+an FC-Loss that enforces consistency between predicted and ground truth Fourier coefficients. During inference, the FIT
+is conditioned on the first 39 entries of the FDE, corresponding to (a,d) 3x Fourier binned input images. Panels (b,e)
+show the inverse Fourier transform of the predicted output, and panels (c,f) depict the corresponding ground truth.
 
 ## FIT for Tomography
 
@@ -39,17 +39,40 @@ is then computed via an inverse Fourier transform (iFFT) of these predictions. I
 fluctuations in this result, we introduce a shallow conv-block after the iFFT (shown in black). We train this setup
 combining the FC-Loss, see Section 3.2 in the paper, and a conventional MSE-loss between prediction and ground truth.
 
-## Installation TODO
+## Installation
 
-astra-toolbox requires cuda 10.2: conda install -c astra-toolbox/label/dev astra-toolbox
+We use [fast-transformers]() as underlying transformer implementation. In our super-resolution experiments we use their
+`causal-linear` implementation, which uses custom CUDA code (prediction works without this custom code). This code is
+compiled during the installation of fast-transformers and it is necessary that CUDA and NVIDIA driver versions match.
+For our experiments we used CUDA 10.2 and NVIDIA driver 440.118.02.
 
-conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
+We recommend to install Fast Image Transformer into a new [conda](https://docs.conda.io/en/latest/miniconda.html)
+environment:
 
-Build Python package:
-`python setup.py bdist_wheel`
+`conda create -n fit python=3.7`
 
-Build singularity recipe:
-`neurodocker generate singularity -b nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 -p apt --copy /home/tibuch/Gitrepos/FourierImageTransformer/dist/fourier_image_transformers-0.1.24_zero-py3-none-any.whl /fourier_image_transformers-0.1.24_zero-py3-none-any.whl --miniconda create_env=fit conda_install='python=3.7 astra-toolbox pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch -c astra-toolbox/label/dev' pip_install='/fourier_image_transformers-0.1.24_zero-py3-none-any.whl' activate=true --entrypoint "/neurodocker/startup.sh python" > v0.1.24_zero.Singularity`
+Next activate the new environment.:
 
-Build singularity container:
-`sudo singularity build fit_v0.1.24_zero.simg v0.1.24_zero.Singularity`
+`conda activate fit`
+
+Now we have to install the `astra-toolbox`:
+
+`conda install -c astra-toolbox/label/dev astra-toolbox`
+
+Then we install PyTorch for CUDA 10.2:
+
+`conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch`
+
+And finally we install Fourier Image Transformer:
+
+`pip install fourier-image-transformer`
+
+Start the jupyter server:
+
+`jupyter notebook`
+
+
+## Cite
+```
+@{}
+```
