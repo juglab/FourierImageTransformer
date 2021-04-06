@@ -41,7 +41,7 @@ combining the FC-Loss, see Section 3.2 in the paper, and a conventional MSE-loss
 
 ## Installation
 
-We use [fast-transformers]() as underlying transformer implementation. In our super-resolution experiments we use their
+We use [fast-transformers](https://github.com/idiap/fast-transformers) as underlying transformer implementation. In our super-resolution experiments we use their
 `causal-linear` implementation, which uses custom CUDA code (prediction works without this custom code). This code is
 compiled during the installation of fast-transformers and it is necessary that CUDA and NVIDIA driver versions match.
 For our experiments we used CUDA 10.2 and NVIDIA driver 440.118.02.
@@ -55,13 +55,17 @@ Next activate the new environment.:
 
 `conda activate fit`
 
-Now we have to install the `astra-toolbox`:
-
-`conda install -c astra-toolbox/label/dev astra-toolbox`
-
 Then we install PyTorch for CUDA 10.2:
 
 `conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch`
+
+Followed by installing fast-transformers:
+
+`pip install --user pytorch-fast-transformers`
+
+Now we have to install the `astra-toolbox`:
+
+`conda install -c astra-toolbox/label/dev astra-toolbox`
 
 And finally we install Fourier Image Transformer:
 
