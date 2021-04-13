@@ -78,5 +78,12 @@ Start the jupyter server:
 
 ## Cite
 ```
-@{}
+@misc{buchholz2021fourier,
+      title={Fourier Image Transformer}, 
+      author={Tim-Oliver Buchholz and Florian Jug},
+      year={2021},
+      eprint={2104.02555},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+}
 ```
