@@ -12,7 +12,7 @@ set of Fourier domain observations. We demonstrate the practicality of this appr
 tomography (CT) image reconstruction. In summary, we show that Fourier Image Transformer (FIT) can be used to solve
 relevant image analysis tasks in Fourier space, a domain inherently inaccessible to convolutional architectures.
 
-Preprint: [arXiv](arXiv)
+Preprint: [arXiv](https://arxiv.org/abs/2104.02555)
 
 ## FIT for Super-Resolution
 
