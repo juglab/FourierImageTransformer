@@ -334,8 +334,9 @@ class TRecTransformerModule(LightningModule):
 
     def test_epoch_end(self, outputs):
         outputs = torch.stack(outputs)
-        self.log('Mean PSNR', torch.mean(outputs).detach().cpu().numpy(), logger=True)
-        self.log('SEM PSNR', torch.std(outputs / np.sqrt(len(outputs))).detach().cpu().numpy(),
+        print(torch.mean(outputs).detach().cpu().numpy())
+        self.log('Mean PSNR', torch.mean(outputs), logger=True)
+        self.log('SEM PSNR', torch.std(outputs / np.sqrt(len(outputs))),
                  logger=True)
 
     def get_imgs(self, x, fbp, y, amp_min, amp_max):
