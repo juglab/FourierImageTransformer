@@ -15,6 +15,8 @@ from skimage.transform import resize
 from fit.utils.utils import normalize
 
 import wget
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class TomoFITDataModule(LightningDataModule):
@@ -273,7 +275,7 @@ class Kanji_TRecFITDM(TomoFITDataModule):
 
     def prepare_data(self, *args, **kwargs):
         if not exists(join(self.root_dir, 'gt_data.npz')):
-            wget.download('https://cloud.mpi-cbg.de/index.php/s/7MK9vNUnq4Ndkhg/download',
+            wget.download('https://download.fht.org/jug/fit/Kanji_TRec_gt_data.npz',
                           out=join(self.root_dir, 'gt_data.npz'))
 
         gt_data = np.load(join(self.root_dir, 'gt_data.npz'))

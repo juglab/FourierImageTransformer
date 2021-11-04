@@ -4,6 +4,8 @@ from typing import Optional, Union, List
 import numpy as np
 import torch
 import wget
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
@@ -107,7 +109,7 @@ class CelebA_SResFITDM(SResFITDataModule):
 
     def prepare_data(self, *args, **kwargs):
         if not exists(join(self.root_dir, 'gt_data.npz')):
-            wget.download('https://cloud.mpi-cbg.de/index.php/s/Wtuy9IqUsSpjKav/download',
+            wget.download('https://download.fht.org/jug/fit/CelebA_SRes_gt_data.npz',
                           out=join(self.root_dir, 'gt_data.npz'))
 
         gt_data = np.load(join(self.root_dir, 'gt_data.npz'))
