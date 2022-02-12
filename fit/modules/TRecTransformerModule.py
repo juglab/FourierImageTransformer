@@ -116,9 +116,10 @@ class TRecTransformerModule(LightningModule):
         return self.trec.forward(x, out_pos_emb)
 
     def configure_optimizers(self):
-        optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5000, T_mult=1,
-                                                                         eta_min=self.hparams.lr * 0.0001,
+        # optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr)
+        optimizer = torch.optim.SGD(self.trec.parameters(), lr=self.hparams.lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=1,
+                                                                         eta_min=self.hparams.lr * 0.001,
                                                                          last_epoch=-1)
         return {
             'optimizer': optimizer,
@@ -306,13 +307,7 @@ class TRecTransformerModule(LightningModule):
             self.register_buffer('mask', psf_rfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
             print('Reduced bin_factor to {}.'.format(self.bin_factor))
 
-        if self.bin_factor > 1:
-            self.trainer.lr_schedulers[0]['scheduler']._reset()
-
         self.bin_count += 1
-
-        if self.bin_factor > 1:
-            self.trainer.lr_schedulers[0]['scheduler']._reset()
 
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
         self.log('Train/avg_val_mse', mean_val_mse, logger=True, on_epoch=True)
