@@ -117,12 +117,13 @@ class TRecTransformerModule(LightningModule):
         return self.trec.forward(x, out_pos_emb)
 
     def configure_optimizers(self):
-        optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, verbose=True)
+        optimizer = torch.optim.SGD(self.trec.parameters(), lr=self.hparams.lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5000, T_mult=1, eta_min=self.hparams.lr*0.0001,
+                                                                        last_epoch=-1)
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
-            'monitor': 'Train/avg_val_mse'
+            'interval': 'step'
         }
 
     def _real_loss(self, pred_img, target_fc, amp_min, amp_max):
