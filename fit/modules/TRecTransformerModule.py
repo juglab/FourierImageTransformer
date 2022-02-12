@@ -14,6 +14,8 @@ import torch.fft
 
 from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi, denormalize_FC
 
+import wandb
+
 
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, sinogram_coords, target_coords, src_flatten_coords,
@@ -243,6 +245,9 @@ class TRecTransformerModule(LightningModule):
         dft_target = convert2DFT(x=y_fc, amp_min=amp_min, amp_max=amp_max,
                                  dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
 
+        fbp_imgs = []
+        pred_imgs = []
+        target_imgs = []
         for i in range(min(3, len(pred_img))):
 
             if self.bin_factor == 1:
@@ -256,17 +261,18 @@ class TRecTransformerModule(LightningModule):
                 y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
                                    2 * (self.hparams.img_shape // 2,), (0, 1))
 
-            fbp_img = torch.clamp((fbp_img - fbp_img.min()) / (fbp_img.max() - fbp_img.min()), 0, 1)
+            fbp_img = torch.clamp((fbp_img - fbp_img.min()) * 255 / (fbp_img.max() - fbp_img.min()), 0, 255)
             pred_img_ = pred_img[i]
-            pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) / (pred_img_.max() - pred_img_.min()), 0, 1)
-            y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
-
-            self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), fbp_img.unsqueeze(0),
-                                                     global_step=self.trainer.global_step)
-            self.trainer.logger.experiment.add_image('predcitions/img_{}'.format(i), pred_img_.unsqueeze(0),
-                                                     global_step=self.trainer.global_step)
-            self.trainer.logger.experiment.add_image('targets/img_{}'.format(i), y_img.unsqueeze(0),
-                                                     global_step=self.trainer.global_step)
+            pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) * 255 / (pred_img_.max() - pred_img_.min()), 0, 255)
+            y_img = torch.clamp((y_img - y_img.min()) * 255 / (y_img.max() - y_img.min()), 0, 255)
+            
+            fbp_imgs.append(wandb.Image(fbp_img.detach().cpu().numpy().astype(np.uint8), mode='L'))
+            pred_imgs.append(wandb.Image(pred_img_.detach().cpu().numpy().astype(np.uint8), mode='L'))
+            target_imgs.append(wandb.Image(y_img.detach().cpu().numpy().astype(np.uint8), mode='L'))
+            
+        self.trainer.logger.log_image(key="FBP", images=fbp_imgs)
+        self.trainer.logger.log_image(key="Prediction", images=pred_imgs)
+        self.trainer.logger.log_image(key="Ground Truth", images=target_imgs)
 
     def _is_better(self, mean_val_mse):
         return mean_val_mse < self.best_mean_val_mse * (1. - 0.0001)

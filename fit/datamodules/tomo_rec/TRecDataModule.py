@@ -1,7 +1,7 @@
 from os.path import join, exists
 from typing import Optional, Union, List
 
-import dival
+from dival import get_standard_dataset
 import numpy as np
 import torch
 from pytorch_lightning import LightningDataModule
@@ -148,7 +148,7 @@ class LoDoPaB_TRecFITDM(TomoFITDataModule):
         super().__init__(root_dir=None, gt_shape=gt_shape, batch_size=batch_size, num_angles=num_angles)
 
     def prepare_data(self, *args, **kwargs):
-        lodopab = dival.get_standard_dataset('lodopab', impl='astra_cpu')
+        lodopab = get_standard_dataset('lodopab', impl='astra_cpu')
         assert self.gt_shape <= self.IMG_SHAPE, 'GT is larger than original images.'
         if self.gt_shape < self.IMG_SHAPE:
             gt_train = np.array([resize(lodopab.get_sample(i, part='train', out=(False, True))[1][1:, 1:],
@@ -211,7 +211,7 @@ class CropLoDoPaB_TRecFITDM(TomoFITDataModule):
         super().__init__(root_dir=None, gt_shape=gt_shape, batch_size=batch_size, num_angles=num_angles)
 
     def prepare_data(self, *args, **kwargs):
-        lodopab = dival.get_standard_dataset('lodopab', impl='astra_cpu')
+        lodopab = get_standard_dataset('lodopab', impl='astra_cpu')
         assert self.gt_shape <= self.IMG_SHAPE, 'GT is larger than original images.'
         if self.gt_shape < self.IMG_SHAPE:
             crop_off = (362 - self.gt_shape) // 2

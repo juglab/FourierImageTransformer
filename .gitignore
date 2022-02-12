@@ -150,3 +150,9 @@ lightning_logs
 
 # model ipynb_checkpoints
 *.ckpt
+
+# wandb
+wandb
+
+# slurm-out
+slurm*.out
