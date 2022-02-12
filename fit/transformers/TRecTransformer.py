@@ -82,7 +82,7 @@ class TRecTransformer(torch.nn.Module):
         fbp = self.pos_embedding_target(fbp)
         y_hat = self.decoder(fbp, z)
         y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
         dft_hat = convert2DFT(y_hat, amp_min=amp_min, amp_max=amp_max, dst_flatten_order=dst_flatten_coords,
@@ -146,7 +146,7 @@ class TRecOnlyFBP(torch.nn.Module):
         fbp = self.pos_embedding_target(fbp)
         y_hat = self.encoder(fbp)
         y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
         dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
