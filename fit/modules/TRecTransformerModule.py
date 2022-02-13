@@ -131,8 +131,8 @@ class TRecTransformerModule(LightningModule):
     def _real_loss(self, pred_img, target_fc, amp_min, amp_max):
         dft_target = convert2DFT(x=target_fc, amp_min=amp_min, amp_max=amp_max,
                                  dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
-        if self.bin_factor > 1:
-            dft_target *= self.mask
+        # if self.bin_factor > 1:
+        #     dft_target *= self.mask
 
         y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
                               2 * (self.hparams.img_shape // 2,), (1, 2))

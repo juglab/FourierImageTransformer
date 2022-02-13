@@ -151,7 +151,7 @@ class TRecOnlyFBP(torch.nn.Module):
 
         dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
                               img_shape=img_shape)
-        dft_hat *= attenuation
+        # dft_hat *= attenuation
         img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
                              2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
         img_post = self.conv_block(img_hat)
@@ -174,7 +174,7 @@ class TRecOnlyConvBlock(torch.nn.Module):
     def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
         dft_hat = convert2DFT(fbp, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
                               img_shape=img_shape)
-        dft_hat *= attenuation
+        # dft_hat *= attenuation
         img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
                              2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
         img_post = self.conv_block(img_hat)
