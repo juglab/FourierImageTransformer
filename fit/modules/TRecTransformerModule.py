@@ -119,7 +119,7 @@ class TRecTransformerModule(LightningModule):
         optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr)
         # optimizer = torch.optim.SGD(self.trec.parameters(), lr=self.hparams.lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=100, T_mult=1,
-                                                                         eta_min=self.hparams.lr * 0.001,
+                                                                         eta_min=self.hparams.lr * 0.01,
                                                                          last_epoch=-1)
         return {
             'optimizer': optimizer,
