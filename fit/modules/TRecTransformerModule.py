@@ -138,17 +138,6 @@ class TRecTransformerModule(LightningModule):
                               2 * (self.hparams.img_shape // 2,), (1, 2))
         return F.mse_loss(pred_img, y_target)
 
-    def _fc_loss(self, pred_fc, target_fc, amp_min, amp_max):
-        pred_amp = denormalize_amp(pred_fc[..., 0], amp_min=amp_min, amp_max=amp_max)
-        target_amp = denormalize_amp(target_fc[..., 0], amp_min=amp_min, amp_max=amp_max)
-
-        pred_phi = denormalize_phi(pred_fc[..., 1])
-        target_phi = denormalize_phi(target_fc[..., 1])
-
-        amp_loss = 0 + torch.pow(pred_amp - target_amp, 2)
-        phi_loss = 1 - torch.cos(pred_phi - target_phi)
-        return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
-
     def criterion(self, pred_fc, pred_img, target_fc, amp_min, amp_max):
         if self.hparams.only_convblock:
             return self._real_loss(pred_img=pred_img, target_fc=target_fc, amp_min=amp_min,
