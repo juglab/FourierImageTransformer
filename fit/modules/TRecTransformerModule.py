@@ -181,8 +181,16 @@ class TRecTransformerModule(LightningModule):
                                               img_shape=self.hparams.img_shape,
                                               attenuation=self.mask)
 
+        dft_pred_fc = convert2DFT(x=pred_fc, amp_min=amp_min, amp_max=amp_max,
+                                  dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
+        pred_img = torch.roll(torch.fft.irfftn(dft_pred_fc, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                              2 * (self.hparams.img_shape // 2,), (1, 2))
+
+        mse = F.mse_loss(pred_img, y_real)
+
         fc_loss, amp_loss, phi_loss = self.criterion(pred_fc, y_fc_, amp_min, amp_max)
-        return {'loss': fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
+        # return {'loss': fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
+        return {'loss': mse, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
 
     def training_epoch_end(self, outputs):
         loss = [d['loss'] for d in outputs]
