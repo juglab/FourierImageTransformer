@@ -24,6 +24,7 @@ class TRecTransformerModule(LightningModule):
                  init_bin_factor=4,
                  bin_factor_cd=10,
                  lr=0.0001,
+                 t_0=100,
                  weight_decay=0.01,
                  attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1,
                  only_FBP=False,
@@ -39,6 +40,7 @@ class TRecTransformerModule(LightningModule):
                                   "loss",
                                   "use_fbp",
                                   "lr",
+                                  "t_0",
                                   "weight_decay",
                                   "attention_type",
                                   "n_layers",
@@ -118,7 +120,7 @@ class TRecTransformerModule(LightningModule):
     def configure_optimizers(self):
         optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr)
         # optimizer = torch.optim.SGD(self.trec.parameters(), lr=self.hparams.lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=100, T_mult=1,
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=self.hparams.t_0, T_mult=1,
                                                                          eta_min=self.hparams.lr * 0.01,
                                                                          last_epoch=-1)
         return {
