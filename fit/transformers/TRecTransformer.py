@@ -66,12 +66,12 @@ class TRecTransformer(torch.nn.Module):
             1
         )
 
-        self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_conv),
-            torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
-        )
+        # self.conv_block = torch.nn.Sequential(
+        #     torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
+        #     torch.nn.ReLU(),
+        #     torch.nn.BatchNorm2d(d_conv),
+        #     torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
+        # )
 
     def forward(self, x, fbp, amp_min, amp_max, dst_flatten_coords, img_shape, attenuation):
         x = self.fourier_coefficient_embedding(x)
@@ -85,15 +85,15 @@ class TRecTransformer(torch.nn.Module):
         y_phase = torch.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
-        dft_hat = convert2DFT(y_hat, amp_min=amp_min, amp_max=amp_max, dst_flatten_order=dst_flatten_coords,
-                              img_shape=img_shape)
-        dft_hat *= attenuation
-        img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
-                             2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
-        img_post = self.conv_block(img_hat)
-        img_post += img_hat
+        # dft_hat = convert2DFT(y_hat, amp_min=amp_min, amp_max=amp_max, dst_flatten_order=dst_flatten_coords,
+        #                       img_shape=img_shape)
+        # dft_hat *= attenuation
+        # img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
+        #                      2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
+        # img_post = self.conv_block(img_hat)
+        # img_post += img_hat
 
-        return y_hat, img_post[:, 0]
+        return y_hat#, img_post[:, 0]
 
 
 class TRecOnlyFBP(torch.nn.Module):
@@ -134,12 +134,12 @@ class TRecOnlyFBP(torch.nn.Module):
             1
         )
 
-        self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_conv),
-            torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
-        )
+        # self.conv_block = torch.nn.Sequential(
+        #     torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
+        #     torch.nn.ReLU(),
+        #     torch.nn.BatchNorm2d(d_conv),
+        #     torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
+        # )
 
     def forward(self, x, fbp, mag_min, mag_max, dst_flatten_coords, img_shape, attenuation):
         fbp = self.fbp_fourier_coefficient_embedding(fbp)
@@ -149,15 +149,15 @@ class TRecOnlyFBP(torch.nn.Module):
         y_phase = torch.tanh(self.predictor_phase(y_hat))
         y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
-        dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
-                              img_shape=img_shape)
+        # dft_hat = convert2DFT(y_hat, amp_min=mag_min, amp_max=mag_max, dst_flatten_order=dst_flatten_coords,
+        #                       img_shape=img_shape)
         # dft_hat *= attenuation
-        img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
-                             2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
-        img_post = self.conv_block(img_hat)
-        img_post += img_hat
+        # img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
+        #                      2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
+        # img_post = self.conv_block(img_hat)
+        # img_post += img_hat
 
-        return y_hat, img_post[:, 0]
+        return y_hat#, img_post[:, 0]
 
 
 class TRecOnlyConvBlock(torch.nn.Module):
