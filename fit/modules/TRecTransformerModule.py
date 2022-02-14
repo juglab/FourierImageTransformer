@@ -226,8 +226,6 @@ class TRecTransformerModule(LightningModule):
                                               img_shape=self.hparams.img_shape,
                                               attenuation=self.mask)
 
-        pred_fc = denormalize_FC(pred_fc, amp_min=amp_min, amp_max=amp_max)
-
         dft_pred_fc = convert2DFT(x=pred_fc, amp_min=amp_min, amp_max=amp_max,
                                   dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
         pred_img = torch.roll(torch.fft.irfftn(dft_pred_fc, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
