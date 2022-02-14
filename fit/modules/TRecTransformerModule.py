@@ -190,7 +190,7 @@ class TRecTransformerModule(LightningModule):
 
         fc_loss, amp_loss, phi_loss = self.criterion(pred_fc, y_fc_, amp_min, amp_max)
         # return {'loss': fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
-        return {'loss': mse, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
+        return {'loss': mse + fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
 
     def training_epoch_end(self, outputs):
         loss = [d['loss'] for d in outputs]
@@ -242,7 +242,7 @@ class TRecTransformerModule(LightningModule):
         val_mse = F.mse_loss(pred_img, y_real)
         val_psnr = self._val_psnr(pred_img, y_real)
         bin_mse = self._gt_bin_mse(y_fc_, y_real, amp_min=amp_min, amp_max=amp_max)
-        self.log_dict({'val_loss': val_loss})
+        self.log_dict({'val_loss': val_loss + val_mse})
         self.log_dict({'val_mse': val_mse})
         self.log_dict({'val_psnr': val_psnr})
         self.log_dict({'bin_mse': bin_mse})
