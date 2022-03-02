@@ -49,7 +49,7 @@ For our experiments we used CUDA 10.2 and NVIDIA driver 440.118.02.
 We recommend to install Fast Image Transformer into a new [conda](https://docs.conda.io/en/latest/miniconda.html)
 environment:
 
-`conda create -n fit python=3.7`
+`conda create -n fit python=3.9`
 
 Next activate the new environment.:
 
