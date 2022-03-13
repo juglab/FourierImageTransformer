@@ -174,15 +174,15 @@ class TRecTransformerModule(LightningModule):
     def log_val_images(self, pred_img, fbp_fc, y_fc, y_real, amp_min, amp_max):
         dft_fbp = convert2DFT(x=fbp_fc, amp_min=amp_min, amp_max=amp_max,
                               dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
-        dft_target = convert2DFT(x=y_fc, amp_min=amp_min, amp_max=amp_max,
-                                 dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
+        # dft_target = convert2DFT(x=y_fc, amp_min=amp_min, amp_max=amp_max,
+        #                          dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
 
         fbp_imgs = []
         pred_imgs = []
         target_imgs = []
         for i in range(min(3, len(pred_img))):
 
-            fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i], s=2 * (self.hparams.img_shape,)),
+            fbp_img = torch.roll(torch.fft.irfftn(dft_fbp[i], s=2 * (self.hparams.img_shape,)),
                                  2 * (self.hparams.img_shape // 2,), (0, 1))
             y_img = y_real[i]
 
