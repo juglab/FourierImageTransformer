@@ -58,8 +58,11 @@ class PositionalEncoding2D(torch.nn.Module):
     def forward(self, x):
         pos_embedding = self.pe[:, :x.size(1), :]
         pos_embedding = torch.repeat_interleave(pos_embedding, x.shape[0], dim=0)
-        x = torch.cat([x, pos_embedding], dim=2)
-        return self.dropout(x)
+        x_ = torch.zeros_like(pos_embedding)
+        x_[:, :2] = x
+        x_ = x_ + pos_embedding
+        # x = torch.cat([x, pos_embedding], dim=2)
+        return self.dropout(x_)
 
     def forward_i(self, x, i):
         pos_embedding = self.pe[0, i:i + 1]

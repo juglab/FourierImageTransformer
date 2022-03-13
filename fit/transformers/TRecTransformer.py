@@ -18,7 +18,7 @@ class TRecTransformer(torch.nn.Module):
         super(TRecTransformer, self).__init__()
 
         self.pos_embedding_input_projections = PositionalEncoding2D(
-            d_model - 2,
+            d_model,
             coords=coords_sinogram,
             flatten_order=flatten_order_sinogram,
             persistent=False
@@ -35,7 +35,7 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.pos_embedding_target = PositionalEncoding2D(d_model - 2, coords=coords_target,
+        self.pos_embedding_target = PositionalEncoding2D(d_model, coords=coords_target,
                                                          flatten_order=flatten_order_target)
 
         self.decoder = TransformerDecoderBuilder.from_kwargs(
