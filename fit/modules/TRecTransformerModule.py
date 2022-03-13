@@ -182,16 +182,9 @@ class TRecTransformerModule(LightningModule):
         target_imgs = []
         for i in range(min(3, len(pred_img))):
 
-            if self.bin_factor == 1:
-                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i], s=2 * (self.hparams.img_shape,)),
-                                     2 * (self.hparams.img_shape // 2,), (0, 1))
-                y_img = y_real[i]
-            else:
-                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i],
-                                                      s=2 * (self.hparams.img_shape,)),
-                                     2 * (self.hparams.img_shape // 2,), (0, 1))
-                y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
-                                   2 * (self.hparams.img_shape // 2,), (0, 1))
+            fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i], s=2 * (self.hparams.img_shape,)),
+                                 2 * (self.hparams.img_shape // 2,), (0, 1))
+            y_img = y_real[i]
 
             fbp_img = torch.clamp((fbp_img - fbp_img.min()) * 255 / (fbp_img.max() - fbp_img.min()), 0, 255)
             pred_img_ = pred_img[i]
