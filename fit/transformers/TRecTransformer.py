@@ -17,6 +17,8 @@ class TRecTransformer(torch.nn.Module):
                  attention_dropout=0.1):
         super(TRecTransformer, self).__init__()
 
+        self.fourier_coefficient_embedding = torch.nn.Linear(2, d_model)
+
         self.pos_embedding_input_projections = PositionalEncoding2D(
             d_model,
             coords=coords_sinogram,
@@ -50,23 +52,28 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.predictor_amp = torch.nn.Linear(
+        self.predictor = torch.nn.Linear(
             n_heads * d_query,
-            1
+            2
         )
-        self.predictor_phase = torch.nn.Linear(
-            n_heads * d_query,
-            1
-        )
+        # self.predictor_phase = torch.nn.Linear(
+        #     n_heads * d_query,
+        #     1
+        # )
 
     def forward(self, x, target_fc):
+        x = self.fourier_coefficient_embedding(x)
         x = self.pos_embedding_input_projections(x)
         z = self.encoder(x, attn_mask=None)
 
-        x_ = self.pos_embedding_target(target_fc)
+        x_ = self.fourier_coefficient_embedding(target_fc)
+        x_ = self.pos_embedding_target(x_)
         y_hat = self.decoder(x_, z)
-        y_amp = self.predictor_amp(y_hat)
-        y_phase = torch.tanh(self.predictor_phase(y_hat))
-        y_hat = torch.cat([y_amp, y_phase], dim=-1)
+        y_hat = self.predictor(y_hat)
+        y_hat = torch.cat([y_hat[...,0], torch.tanh(y_hat[...,1])], dim=-1)
+
+        # y_amp = self.predictor_amp(y_hat)
+        # y_phase = torch.tanh(self.predictor_phase(y_hat))
+        # y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
         return y_hat
