@@ -110,7 +110,6 @@ class TRecTransformerModule(LightningModule):
         x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
 
         fbp_fc_ = fbp_fc[:, self.dst_flatten_order][:, :num_target_fcs]
-        fbp_fc_ = torch.repeat_interleave(fbp_fc_, x_fc.shape[0], dim=0)
 
         y_fc_ = y_fc[:, self.dst_flatten_order][:, :num_target_fcs]
         zero_fbp = fbp_fc_ * 0.
