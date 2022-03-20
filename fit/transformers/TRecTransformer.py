@@ -70,7 +70,7 @@ class TRecTransformer(torch.nn.Module):
         x_ = self.pos_embedding_target(x_)
         y_hat = self.decoder(x_, z)
         y_hat = self.predictor(y_hat)
-        y_hat = torch.cat([y_hat[...,0], torch.tanh(y_hat[...,1])], dim=-1)
+        y_hat = torch.cat([y_hat[...,:1], torch.tanh(y_hat[...,1:])], dim=-1)
 
         # y_amp = self.predictor_amp(y_hat)
         # y_phase = torch.tanh(self.predictor_phase(y_hat))
