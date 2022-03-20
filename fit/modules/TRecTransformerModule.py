@@ -19,6 +19,7 @@ import wandb
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, sinogram_coords, target_coords, src_flatten_coords,
                  dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27,
+                 init_bin_factor=1,
                  lr=0.0001,
                  t_0=100,
                  weight_decay=0.01,
@@ -29,6 +30,7 @@ class TRecTransformerModule(LightningModule):
         self.save_hyperparameters("d_model",
                                   "img_shape",
                                   "detector_len",
+                                  "init_bin_factor",
                                   "lr",
                                   "t_0",
                                   "weight_decay",
@@ -53,6 +55,7 @@ class TRecTransformerModule(LightningModule):
         self.num_angles = len(self.angles)
         self.dft_shape = (img_shape, img_shape // 2 + 1)
         self.best_mean_val_mse = 9999999
+        self.bin_factor = init_bin_factor
 
         self.loss = _fc_prod_loss
 
@@ -96,10 +99,21 @@ class TRecTransformerModule(LightningModule):
 
     def _flatten_data(self, x_fc, fbp_fc, y_fc):
 
-        x_fc_ = x_fc[:, self.src_flatten_coords]
-        zero_fbp = fbp_fc * 0.
-        y_fc_ = y_fc[:, self.dst_flatten_order]
+        shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
+        num_sino_fcs = np.clip(self.num_angles * int(shells + 1), 1, x_fc.shape[1])
 
+        if self.bin_factor > 1:
+            num_target_fcs = np.sum(self.dst_order <= shells)
+        else:
+            num_target_fcs = fbp_fc.shape[1]
+
+        x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
+
+        fbp_fc_ = self.zero_cond[:, self.dst_flatten_order][:, :num_target_fcs]
+        fbp_fc_ = torch.repeat_interleave(fbp_fc_, x_fc.shape[0], dim=0)
+
+        y_fc_ = y_fc[:, self.dst_flatten_order][:, :num_target_fcs]
+        zero_fbp = fbp_fc_ * 0.
         return x_fc_, zero_fbp, y_fc_
 
     def training_step(self, batch, batch_idx):
