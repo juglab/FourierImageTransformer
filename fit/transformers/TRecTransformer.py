@@ -16,14 +16,13 @@ class TRecTransformer(torch.nn.Module):
                  n_heads=4,
                  d_query=32,
                  dropout=0.1,
-                 attention_dropout=0.1,
-                 d_conv=8):
+                 attention_dropout=0.1):
         super(TRecTransformer, self).__init__()
 
-        self.fourier_coefficient_embedding = torch.nn.Linear(2, d_model // 2)
+        self.fourier_coefficient_embedding = torch.nn.Linear(2, d_model)
 
         self.pos_embedding_input_projections = PositionalEncoding2D(
-            d_model // 2,
+            d_model,
             coords=coords_sinogram,
             flatten_order=flatten_order_sinogram,
             persistent=False
@@ -40,9 +39,7 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.fbp_fourier_coefficient_embedding = torch.nn.Linear(2, d_model // 2)
-
-        self.pos_embedding_target = PositionalEncoding2D(d_model // 2, coords=coords_target,
+        self.pos_embedding_target = PositionalEncoding2D(d_model, coords=coords_target,
                                                          flatten_order=flatten_order_target)
 
         self.decoder = TransformerDecoderBuilder.from_kwargs(
@@ -57,44 +54,31 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.predictor_amp = torch.nn.Linear(
+        self.predictor = torch.nn.Linear(
             n_heads * d_query,
-            1
+            2
         )
-        self.predictor_phase = torch.nn.Linear(
-            n_heads * d_query,
-            1
-        )
+        # self.predictor_phase = torch.nn.Linear(
+        #     n_heads * d_query,
+        #     1
+        # )
 
-        self.conv_block = torch.nn.Sequential(
-            torch.nn.Conv2d(1, d_conv, kernel_size=3, stride=1, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(d_conv),
-            torch.nn.Conv2d(d_conv, 1, kernel_size=1, stride=1, padding=0)
-        )
-
-    def forward(self, x, fbp, amp_min, amp_max, dst_flatten_coords, img_shape, attenuation):
+    def forward(self, x, target_fc):
         x = self.fourier_coefficient_embedding(x)
         x = self.pos_embedding_input_projections(x)
         z = self.encoder(x, attn_mask=None)
 
-        fbp = self.fbp_fourier_coefficient_embedding(fbp)
-        fbp = self.pos_embedding_target(fbp)
-        y_hat = self.decoder(fbp, z)
-        y_amp = self.predictor_amp(y_hat)
-        y_phase = F.tanh(self.predictor_phase(y_hat))
-        y_hat = torch.cat([y_amp, y_phase], dim=-1)
+        x_ = self.fourier_coefficient_embedding(target_fc)
+        x_ = self.pos_embedding_target(x_)
+        y_hat = self.decoder(x_, z)
+        y_hat = self.predictor(y_hat)
+        y_hat = torch.cat([y_hat[...,:1], torch.tanh(y_hat[...,1:])], dim=-1)
 
-        dft_hat = convert2DFT(y_hat, amp_min=amp_min, amp_max=amp_max, dst_flatten_order=dst_flatten_coords,
-                              img_shape=img_shape)
-        dft_hat *= attenuation
-        img_hat = torch.roll(torch.fft.irfftn(dft_hat, dim=[1, 2], s=2 * (img_shape,)),
-                             2 * (img_shape // 2,), (1, 2)).unsqueeze(1)
-        img_post = self.conv_block(img_hat)
-        img_post += img_hat
+        # y_amp = self.predictor_amp(y_hat)
+        # y_phase = torch.tanh(self.predictor_phase(y_hat))
+        # y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
-        return y_hat, img_post[:, 0]
-
+        return y_hat
 
 class TRecOnlyFBP(torch.nn.Module):
     def __init__(self,

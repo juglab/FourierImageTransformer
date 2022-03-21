@@ -14,6 +14,8 @@ import torch.fft
 
 from fit.utils.utils import denormalize, denormalize_amp, denormalize_phi, denormalize_FC
 
+import wandb
+
 
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, sinogram_coords, target_coords, src_flatten_coords,
@@ -102,8 +104,7 @@ class TRecTransformerModule(LightningModule):
                                         n_heads=self.hparams.n_heads,
                                         d_query=self.hparams.d_query,
                                         dropout=self.hparams.dropout,
-                                        attention_dropout=self.hparams.attention_dropout,
-                                        d_conv=d_conv)
+                                        attention_dropout=self.hparams.attention_dropout)
 
         x, y = torch.meshgrid(torch.arange(-self.hparams.img_shape // 2 + 1,
                                            self.hparams.img_shape // 2 + 1),
@@ -115,23 +116,30 @@ class TRecTransformerModule(LightningModule):
         return self.trec.forward(x, out_pos_emb)
 
     def configure_optimizers(self):
-        optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, verbose=True)
+        optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.hparams.t_0,
+                                                               eta_min=self.hparams.lr * 0.01,
+                                                               last_epoch=-1)
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
-            'monitor': 'Train/avg_val_mse'
+            'interval': 'step',
+            "frequency": 1
         }
 
-    def _real_loss(self, pred_img, target_fc, amp_min, amp_max):
-        dft_target = convert2DFT(x=target_fc, amp_min=amp_min, amp_max=amp_max,
-                                 dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
-        if self.bin_factor > 1:
-            dft_target *= self.mask
+    def _real_loss(self, pred_fc, target_fc, amp_min, amp_max):
+        y_pred = self.get_img_from_fc(amp_max, amp_min, pred_fc)
+        y_target = self.get_img_from_fc(amp_max, amp_min, target_fc)
+        return F.mse_loss(y_pred, y_target)
 
-        y_target = torch.roll(torch.fft.irfftn(dft_target, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
-                              2 * (self.hparams.img_shape // 2,), (1, 2))
-        return F.mse_loss(pred_img, y_target)
+    def get_img_from_fc(self, amp_max, amp_min, pred_fc):
+        dft_pred = convert2DFT(x=pred_fc, amp_min=amp_min, amp_max=amp_max,
+                               dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
+        if self.bin_factor > 1:
+            dft_pred *= self.mask
+        y_pred = torch.roll(torch.fft.irfftn(dft_pred, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
+                            2 * (self.hparams.img_shape // 2,), (1, 2))
+        return y_pred
 
     def _fc_loss(self, pred_fc, target_fc, amp_min, amp_max):
         pred_amp = denormalize_amp(pred_fc[..., 0], amp_min=amp_min, amp_max=amp_max)
@@ -144,16 +152,12 @@ class TRecTransformerModule(LightningModule):
         phi_loss = 1 - torch.cos(pred_phi - target_phi)
         return torch.mean(amp_loss + phi_loss), torch.mean(amp_loss), torch.mean(phi_loss)
 
-    def criterion(self, pred_fc, pred_img, target_fc, amp_min, amp_max):
-        if self.hparams.only_convblock:
-            return self._real_loss(pred_img=pred_img, target_fc=target_fc, amp_min=amp_min,
-                                   amp_max=amp_max), torch.tensor(0.0), torch.tensor(0.0)
-        else:
-            fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, amp_min=amp_min,
-                                                    amp_max=amp_max)
-            real_loss = self._real_loss(pred_img=pred_img, target_fc=target_fc, amp_min=amp_min,
-                                        amp_max=amp_max)
-            return fc_loss + real_loss, amp_loss, phi_loss
+    def criterion(self, pred_fc, target_fc, amp_min, amp_max):
+        fc_loss, amp_loss, phi_loss = self.loss(pred_fc=pred_fc, target_fc=target_fc, amp_min=amp_min,
+                                                amp_max=amp_max)
+        real_loss = self._real_loss(pred_fc=pred_fc, target_fc=target_fc, amp_min=amp_min,
+                                    amp_max=amp_max)
+        return fc_loss + real_loss, amp_loss, phi_loss
 
     def _bin_data(self, x_fc, fbp_fc, y_fc):
         shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
@@ -173,18 +177,15 @@ class TRecTransformerModule(LightningModule):
 
         y_fc_ = y_fc[:, self.dst_flatten_order][:, :num_target_fcs]
 
-        return x_fc_, fbp_fc_, y_fc_
+        return x_fc_, fbp_fc_ * 0., y_fc_
 
     def training_step(self, batch, batch_idx):
         x_fc, fbp_fc, y_fc, y_real, (amp_min, amp_max) = batch
         x_fc_, fbp_fc_, y_fc_ = self._bin_data(x_fc, fbp_fc, y_fc)
 
-        pred_fc, pred_img = self.trec.forward(x_fc_, fbp_fc_, amp_min=amp_min, amp_max=amp_max,
-                                              dst_flatten_coords=self.dst_flatten_order,
-                                              img_shape=self.hparams.img_shape,
-                                              attenuation=self.mask)
+        pred_fc = self.trec.forward(x_fc_, fbp_fc_)
 
-        fc_loss, amp_loss, phi_loss = self.criterion(pred_fc, pred_img, y_fc_, amp_min, amp_max)
+        fc_loss, amp_loss, phi_loss = self.criterion(pred_fc, y_fc_, amp_min, amp_max)
         return {'loss': fc_loss, 'amp_loss': amp_loss, 'phi_loss': phi_loss}
 
     def training_epoch_end(self, outputs):
@@ -217,12 +218,11 @@ class TRecTransformerModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         x_fc, fbp_fc, y_fc, y_real, (amp_min, amp_max) = batch
         x_fc_, fbp_fc_, y_fc_ = self._bin_data(x_fc, fbp_fc, y_fc)
-        pred_fc, pred_img = self.trec.forward(x_fc_, fbp_fc_, amp_min=amp_min, amp_max=amp_max,
-                                              dst_flatten_coords=self.dst_flatten_order,
-                                              img_shape=self.hparams.img_shape,
-                                              attenuation=self.mask)
+        pred_fc = self.trec.forward(x_fc_, fbp_fc_)
 
-        val_loss, amp_loss, phi_loss = self.criterion(pred_fc, pred_img, y_fc_, amp_min, amp_max)
+        val_loss, amp_loss, phi_loss = self.criterion(pred_fc, y_fc_, amp_min, amp_max)
+
+        pred_img = self.get_img_from_fc(amp_max, amp_min, pred_fc)
 
         val_mse = F.mse_loss(pred_img, y_real)
         val_psnr = self._val_psnr(pred_img, y_real)
@@ -240,33 +240,27 @@ class TRecTransformerModule(LightningModule):
     def log_val_images(self, pred_img, fbp_fc, y_fc, y_real, amp_min, amp_max):
         dft_fbp = convert2DFT(x=fbp_fc, amp_min=amp_min, amp_max=amp_max,
                               dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
-        dft_target = convert2DFT(x=y_fc, amp_min=amp_min, amp_max=amp_max,
-                                 dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
 
+        fbp_imgs = []
+        pred_imgs = []
+        target_imgs = []
         for i in range(min(3, len(pred_img))):
+            fbp_img = torch.roll(torch.fft.irfftn(dft_fbp[i], s=2 * (self.hparams.img_shape,)),
+                                 2 * (self.hparams.img_shape // 2,), (0, 1))
+            y_img = y_real[i]
 
-            if self.bin_factor == 1:
-                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i], s=2 * (self.hparams.img_shape,)),
-                                     2 * (self.hparams.img_shape // 2,), (0, 1))
-                y_img = y_real[i]
-            else:
-                fbp_img = torch.roll(torch.fft.irfftn(self.mask * dft_fbp[i],
-                                                      s=2 * (self.hparams.img_shape,)),
-                                     2 * (self.hparams.img_shape // 2,), (0, 1))
-                y_img = torch.roll(torch.fft.irfftn(self.mask * dft_target[i], s=2 * (self.hparams.img_shape,)),
-                                   2 * (self.hparams.img_shape // 2,), (0, 1))
-
-            fbp_img = torch.clamp((fbp_img - fbp_img.min()) / (fbp_img.max() - fbp_img.min()), 0, 1)
+            fbp_img = torch.clamp((fbp_img - fbp_img.min()) * 255 / (fbp_img.max() - fbp_img.min()), 0, 255)
             pred_img_ = pred_img[i]
-            pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) / (pred_img_.max() - pred_img_.min()), 0, 1)
-            y_img = torch.clamp((y_img - y_img.min()) / (y_img.max() - y_img.min()), 0, 1)
+            pred_img_ = torch.clamp((pred_img_ - pred_img_.min()) * 255 / (pred_img_.max() - pred_img_.min()), 0, 255)
+            y_img = torch.clamp((y_img - y_img.min()) * 255 / (y_img.max() - y_img.min()), 0, 255)
 
-            self.trainer.logger.experiment.add_image('inputs/img_{}'.format(i), fbp_img.unsqueeze(0),
-                                                     global_step=self.trainer.global_step)
-            self.trainer.logger.experiment.add_image('predcitions/img_{}'.format(i), pred_img_.unsqueeze(0),
-                                                     global_step=self.trainer.global_step)
-            self.trainer.logger.experiment.add_image('targets/img_{}'.format(i), y_img.unsqueeze(0),
-                                                     global_step=self.trainer.global_step)
+            fbp_imgs.append(wandb.Image(fbp_img.detach().cpu().numpy().astype(np.uint8), mode='L'))
+            pred_imgs.append(wandb.Image(pred_img_.detach().cpu().numpy().astype(np.uint8), mode='L'))
+            target_imgs.append(wandb.Image(y_img.detach().cpu().numpy().astype(np.uint8), mode='L'))
+
+        self.trainer.logger.log_image(key="FBP", images=fbp_imgs)
+        self.trainer.logger.log_image(key="Prediction", images=pred_imgs)
+        self.trainer.logger.log_image(key="Ground Truth", images=target_imgs)
 
     def _is_better(self, mean_val_mse):
         return mean_val_mse < self.best_mean_val_mse * (1. - 0.0001)
@@ -290,21 +284,19 @@ class TRecTransformerModule(LightningModule):
 
         reduce_bin_factor = (self.bin_factor_patience < 1) or (
                 self.bin_count > self.hparams.bin_factor_cd and mean_val_mse < bin_factor_threshold)
-        if reduce_bin_factor and self.bin_factor > 1:
+        if reduce_bin_factor and self.bin_factor > 0:
             self.bin_count = 0
             self.bin_factor_patience = 10
             self.best_mean_val_mse = mean_val_mse
-            self.bin_factor = max(1, self.bin_factor // 2)
-            self.register_buffer('mask', psf_rfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
+            self.bin_factor = max(0, self.bin_factor // 2)
+            if self.bin_factor == 0:
+                self.mask = self.mask * 0. + 1.
+            else:
+                self.register_buffer('mask',
+                                     psf_rfft(self.bin_factor, pixel_res=self.hparams.img_shape).to(self.device))
             print('Reduced bin_factor to {}.'.format(self.bin_factor))
 
-        if self.bin_factor > 1:
-            self.trainer.lr_schedulers[0]['scheduler']._reset()
-
         self.bin_count += 1
-
-        if self.bin_factor > 1:
-            self.trainer.lr_schedulers[0]['scheduler']._reset()
 
         self.log('Train/avg_val_loss', torch.mean(torch.stack(val_loss)), logger=True, on_epoch=True)
         self.log('Train/avg_val_mse', mean_val_mse, logger=True, on_epoch=True)
@@ -321,10 +313,8 @@ class TRecTransformerModule(LightningModule):
             self.bin_factor = 1
         x_fc_, fbp_fc_, y_fc_ = self._bin_data(x_fc, fbp_fc, y)
 
-        _, pred_img = self.trec.forward(x_fc_, fbp_fc_, amp_min=amp_min, amp_max=amp_max,
-                                        dst_flatten_coords=self.dst_flatten_order,
-                                        img_shape=self.hparams.img_shape,
-                                        attenuation=self.mask)
+        pred_fc = self.trec.forward(x_fc_, fbp_fc_)
+        pred_img = self.get_img_from_fc(amp_min, amp_max, pred_fc)
 
         gt = denormalize(y_real[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
         pred_img = denormalize(pred_img[0], self.trainer.datamodule.mean, self.trainer.datamodule.std)
@@ -347,19 +337,8 @@ class TRecTransformerModule(LightningModule):
 
         x_fc_, fbp_fc_, y_fc_ = self._bin_data(x, fbp, y)
 
-        pred_fc, pred_img = self.trec.forward(x_fc_, fbp_fc_, amp_min=amp_min, amp_max=amp_max,
-                                              dst_flatten_coords=self.dst_flatten_order,
-                                              img_shape=self.hparams.img_shape,
-                                              attenuation=self.mask)
+        pred_fc = self.trec.forward(x_fc_, fbp_fc_)
 
-        tmp = denormalize_FC(pred_fc, amp_min=amp_min, amp_max=amp_max)
-        pred_fc_ = torch.ones(x.shape[0], self.hparams.img_shape * (self.hparams.img_shape // 2 + 1), dtype=x.dtype,
-                              device=x.device)
-        pred_fc_[:, :tmp.shape[1]] = tmp
+        pred_img = self.get_img_from_fc(amp_max, amp_min, pred_fc)
 
-        dft_pred_fc = convert2DFT(x=pred_fc, amp_min=amp_min, amp_max=amp_max,
-                                  dst_flatten_order=self.dst_flatten_order, img_shape=self.hparams.img_shape)
-        img_pred_before_conv = torch.roll(torch.fft.irfftn(dft_pred_fc, dim=[1, 2], s=2 * (self.hparams.img_shape,)),
-                                          2 * (self.hparams.img_shape // 2,), (1, 2))
-
-        return pred_img, img_pred_before_conv
+        return pred_img
