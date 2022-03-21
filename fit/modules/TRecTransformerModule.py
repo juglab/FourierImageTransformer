@@ -34,7 +34,7 @@ class TRecTransformerModule(LightningModule):
                                   "init_bin_factor",
                                   "detector_len",
                                   "lr",
-                                  "t_0"
+                                  "t_0",
                                   "weight_decay",
                                   "attention_type",
                                   "n_layers",
