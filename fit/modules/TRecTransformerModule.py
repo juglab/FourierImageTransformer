@@ -20,16 +20,12 @@ import wandb
 class TRecTransformerModule(LightningModule):
     def __init__(self, d_model, sinogram_coords, target_coords, src_flatten_coords,
                  dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27,
-                 loss='prod',
-                 use_fbp=True,
                  init_bin_factor=4,
                  bin_factor_cd=10,
-                 lr=0.0001,
+                 lr=0.001,
+                 t_0=50,
                  weight_decay=0.01,
-                 attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1,
-                 only_FBP=False,
-                 only_convblock=False,
-                 d_conv=8):
+                 attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
         super().__init__()
 
         self.save_hyperparameters("d_model",
@@ -37,19 +33,15 @@ class TRecTransformerModule(LightningModule):
                                   "bin_factor_cd",
                                   "init_bin_factor",
                                   "detector_len",
-                                  "loss",
-                                  "use_fbp",
                                   "lr",
+                                  "t_0"
                                   "weight_decay",
                                   "attention_type",
                                   "n_layers",
                                   "n_heads",
                                   "d_query",
                                   "dropout",
-                                  "attention_dropout",
-                                  "only_FBP",
-                                  "only_convblock",
-                                  "d_conv")
+                                  "attention_dropout")
         self.sinogram_coords = sinogram_coords
         self.target_coords = target_coords
         if not type(src_flatten_coords) is torch.Tensor:
@@ -70,20 +62,11 @@ class TRecTransformerModule(LightningModule):
         self.bin_factor_patience = 10
         self.register_buffer('mask', psf_rfft(self.bin_factor, pixel_res=img_shape))
 
-        if loss == 'prod':
-            self.loss = _fc_prod_loss
-        else:
-            self.loss = _fc_sum_loss
+        self.loss = _fc_prod_loss
 
-        if not self.hparams.use_fbp:
-            self.register_buffer('zero_cond', torch.zeros(1, self.dst_flatten_order.shape[0], 2, dtype=torch.float32))
-        else:
-            self.zero_cond = None
-
-        if only_convblock:
-            self.trec = TRecOnlyConvBlock(d_conv=d_conv)
-        elif only_FBP:
-            self.trec = TRecOnlyFBP(d_model=self.hparams.d_model,
+        self.trec = TRecTransformer(d_model=self.hparams.d_model,
+                                    coords_sinogram=self.sinogram_coords,
+                                    flatten_order_sinogram=self.src_flatten_coords,
                                     coords_target=self.target_coords,
                                     flatten_order_target=self.dst_flatten_order,
                                     attention_type=self.hparams.attention_type,
@@ -91,20 +74,7 @@ class TRecTransformerModule(LightningModule):
                                     n_heads=self.hparams.n_heads,
                                     d_query=self.hparams.d_query,
                                     dropout=self.hparams.dropout,
-                                    attention_dropout=self.hparams.attention_dropout,
-                                    d_conv=d_conv)
-        else:
-            self.trec = TRecTransformer(d_model=self.hparams.d_model,
-                                        coords_sinogram=self.sinogram_coords,
-                                        flatten_order_sinogram=self.src_flatten_coords,
-                                        coords_target=self.target_coords,
-                                        flatten_order_target=self.dst_flatten_order,
-                                        attention_type=self.hparams.attention_type,
-                                        n_layers=self.hparams.n_layers,
-                                        n_heads=self.hparams.n_heads,
-                                        d_query=self.hparams.d_query,
-                                        dropout=self.hparams.dropout,
-                                        attention_dropout=self.hparams.attention_dropout)
+                                    attention_dropout=self.hparams.attention_dropout)
 
         x, y = torch.meshgrid(torch.arange(-self.hparams.img_shape // 2 + 1,
                                            self.hparams.img_shape // 2 + 1),
@@ -169,11 +139,7 @@ class TRecTransformerModule(LightningModule):
             num_target_fcs = fbp_fc.shape[1]
 
         x_fc_ = x_fc[:, self.src_flatten_coords][:, :num_sino_fcs]
-        if self.hparams.use_fbp:
-            fbp_fc_ = fbp_fc[:, self.dst_flatten_order][:, :num_target_fcs]
-        else:
-            fbp_fc_ = self.zero_cond[:, self.dst_flatten_order][:, :num_target_fcs]
-            fbp_fc_ = torch.repeat_interleave(fbp_fc_, x_fc.shape[0], dim=0)
+        fbp_fc_ = fbp_fc[:, self.dst_flatten_order][:, :num_target_fcs]
 
         y_fc_ = y_fc[:, self.dst_flatten_order][:, :num_target_fcs]
 
