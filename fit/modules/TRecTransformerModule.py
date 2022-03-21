@@ -134,7 +134,7 @@ class TRecTransformerModule(LightningModule):
         num_sino_fcs = np.clip(self.num_angles * int(shells + 1), 1, x_fc.shape[1])
 
         if self.bin_factor > 1:
-            num_target_fcs = np.sum(self.dst_order <= shells)
+            num_target_fcs = torch.sum(self.dst_order <= shells)
         else:
             num_target_fcs = fbp_fc.shape[1]
 
