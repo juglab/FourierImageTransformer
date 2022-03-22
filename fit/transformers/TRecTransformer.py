@@ -54,14 +54,14 @@ class TRecTransformer(torch.nn.Module):
             attention_dropout=attention_dropout
         ).get()
 
-        self.predictor = torch.nn.Linear(
+        self.predictor_amp = torch.nn.Linear(
             n_heads * d_query,
-            2
+            1
         )
-        # self.predictor_phase = torch.nn.Linear(
-        #     n_heads * d_query,
-        #     1
-        # )
+        self.predictor_phase = torch.nn.Linear(
+            n_heads * d_query,
+            1
+        )
 
     def forward(self, x, target_fc):
         x = self.fourier_coefficient_embedding(x)
@@ -71,12 +71,12 @@ class TRecTransformer(torch.nn.Module):
         x_ = self.fourier_coefficient_embedding(target_fc)
         x_ = self.pos_embedding_target(x_)
         y_hat = self.decoder(x_, z)
-        y_hat = self.predictor(y_hat)
-        y_hat = torch.cat([y_hat[...,:1], torch.tanh(y_hat[...,1:])], dim=-1)
+        # y_hat = self.predictor(y_hat)
+        # y_hat = torch.cat([y_hat[...,:1], torch.tanh(y_hat[...,1:])], dim=-1)
 
-        # y_amp = self.predictor_amp(y_hat)
-        # y_phase = torch.tanh(self.predictor_phase(y_hat))
-        # y_hat = torch.cat([y_amp, y_phase], dim=-1)
+        y_amp = self.predictor_amp(y_hat)
+        y_phase = torch.tanh(self.predictor_phase(y_hat))
+        y_hat = torch.cat([y_amp, y_phase], dim=-1)
 
         return y_hat
 
