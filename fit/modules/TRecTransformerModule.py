@@ -86,7 +86,7 @@ class TRecTransformerModule(LightningModule):
         return self.trec.forward(x, out_pos_emb)
 
     def configure_optimizers(self):
-        optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr)
+        optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.hparams.t_0,
                                                                eta_min=self.hparams.lr * 0.01,
                                                                last_epoch=-1)
