@@ -22,8 +22,7 @@ class TRecTransformerModule(LightningModule):
                  dst_flatten_coords, dst_order, angles, img_shape=27, detector_len=27,
                  init_bin_factor=4,
                  bin_factor_cd=10,
-                 lr=0.001,
-                 t_0=50,
+                 lr=0.0001,
                  weight_decay=0.01,
                  attention_type="linear", n_layers=4, n_heads=4, d_query=4, dropout=0.1, attention_dropout=0.1):
         super().__init__()
@@ -87,14 +86,11 @@ class TRecTransformerModule(LightningModule):
 
     def configure_optimizers(self):
         optimizer = RAdam(self.trec.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.hparams.t_0,
-                                                               eta_min=self.hparams.lr * 0.01,
-                                                               last_epoch=-1)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, verbose=True)
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
-            'interval': 'step',
-            "frequency": 1
+            'monitor': 'Train/avg_val_mse'
         }
 
     def _real_loss(self, pred_fc, target_fc, amp_min, amp_max):
@@ -130,7 +126,7 @@ class TRecTransformerModule(LightningModule):
         return fc_loss + real_loss, amp_loss, phi_loss
 
     def _bin_data(self, x_fc, fbp_fc, y_fc):
-        shells = (self.hparams.detector_len // 2 + 1) / self.bin_factor
+        shells = (self.hparams.detector_len // 2 + 1) / max(1, self.bin_factor)
         num_sino_fcs = np.clip(self.num_angles * int(shells + 1), 1, x_fc.shape[1])
 
         if self.bin_factor > 1:
